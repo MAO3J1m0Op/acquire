@@ -187,6 +187,18 @@ impl<T: Clone> CompanyMap<T> {
     }
 }
 
+impl CompanyMap<bool> {
+    /// Creates a [`Vec`] containing only the companies whose value in the map
+    /// is `true`.
+    pub fn true_companies(&self) -> Vec<Company> {
+        self.iter()
+            .filter_map(|(company, &available)| {
+                if available { Some(company) } else { None }
+            })
+            .collect()
+    }
+}
+
 use std::iter::{Zip, Map};
 use std::array::IntoIter;
 use std::slice::{Iter, IterMut};

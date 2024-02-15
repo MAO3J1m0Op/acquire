@@ -31,39 +31,25 @@ impl ActionPanel {
                 ActionState::ChoosingTile(0)
             },
             ActionPanelRequest::BuyStock { available_companies } => {
-                let available_companies: Vec<_> = available_companies.iter()
-                    .filter_map(|(company, &available)| {
-                        if available { Some(company) } else { None }
-                    })
-                    .collect();
+                let chooser = CompanyChooser::new(&available_companies.true_companies(), true);
                 ActionState::BuyingStock {
                     purchases: [None; 3],
-                    index: available_companies.len() as u8,
-                    available_companies,
+                    index: 0,
+                    chooser,
                 }
             },
             ActionPanelRequest::FoundCompany { tile_placed, available_companies } => {
-                let available_companies = available_companies.iter()
-                    .filter_map(|(company, &available)| {
-                        if available { Some(company) } else { None }
-                    })
-                    .collect();
+                let chooser = CompanyChooser::new(&available_companies.true_companies(), false);
                 ActionState::FoundingCompany {
                     tile_placed,
-                    available_companies,
-                    selected: 0,
+                    chooser,
                 }
             },
             ActionPanelRequest::Merge { tile_placed, participants } => {
-                let participants = participants.iter()
-                    .filter_map(|(company, &available)| {
-                        if available { Some(company) } else { None }
-                    })
-                    .collect();
+                let chooser = CompanyChooser::new(&participants.true_companies(), false);
                 ActionState::Merging {
                     tile_placed,
-                    participants,
-                    selected: 0,
+                    chooser
                 }
             },
             ActionPanelRequest::ResolveMergeStock { count } => {
@@ -93,36 +79,35 @@ impl ActionPanel {
         use termion::event::Key;
 
         match self.action.take() {
-            Some(ActionState::BuyingStock { purchases, available_companies, index }) => {
+            Some(ActionState::BuyingStock { mut purchases, index, mut chooser}) => {
 
                 let action = match key {
                     // Cycle between the companies to buy stock
                     Key::Left => {
-                        let index = (index as i8 - 1) % (available_companies.len() as i8 + 1);
+                        chooser.cycle_left();
                         self.action = Some(ActionState::BuyingStock {
-                            purchases, available_companies, index: index as u8
+                            purchases, index, chooser
                         });
                         None
                     },
                     Key::Right => {
-                        let index = (index + 1) % (available_companies.len() as u8 + 1);
+                        chooser.cycle_right();
                         self.action = Some(ActionState::BuyingStock {
-                            purchases, available_companies, index
+                            purchases, index, chooser
                         });
                         None
                     },
 
                     // Enter advances to the next stock
                     Key::Char('\n') => {
+                        purchases[index] = chooser.selected_company();
                         if index == 2 {
-                            let stock = purchases
-                                .map(|p| p.map(|p| available_companies[p as usize]));
-                            Some(PlayerAction::BuyStock { stock })
+                            Some(PlayerAction::BuyStock { stock: purchases })
                         } else {
                             self.action = Some(ActionState::BuyingStock {
                                 purchases,
-                                available_companies,
                                 index: index + 1,
+                                chooser
                             });
                             None
                         }
@@ -130,7 +115,7 @@ impl ActionPanel {
                     // Invalid key does nothing
                     _ => {
                         self.action = Some(ActionState::BuyingStock {
-                            purchases, available_companies, index
+                            purchases, index, chooser
                         });
                         None
                     }
@@ -140,10 +125,51 @@ impl ActionPanel {
 
                 action
             },
-            Some(ActionState::FoundingCompany { tile_placed, available_companies, selected }) => {
-                todo!();
+            Some(ActionState::FoundingCompany { tile_placed, mut chooser }) => {
+                let action = match key {
+
+                    // Cycle between the founding companies
+                    Key::Left => {
+                        chooser.cycle_left();
+                        self.action = Some(ActionState::FoundingCompany {
+                            tile_placed, chooser
+                        });
+                        None
+                    },
+                    Key::Right => {
+                        chooser.cycle_right();
+                        self.action = Some(ActionState::FoundingCompany {
+                            tile_placed, chooser
+                        });
+                        None
+                    },
+
+                    // Enter to confirm selection
+                    Key::Char('\n') => {
+                        Some(PlayerAction::PlayTile {
+                            placement: TilePlacement {
+                                tile: tile_placed,
+                                implication: Some(TilePlacementImplication::FoundsCompany(
+                                    chooser.selected_company().unwrap()
+                                ))
+                            }
+                        })
+                    },
+
+                    // Invalid key does nothing
+                    _ => {
+                        self.action = Some(ActionState::FoundingCompany {
+                            tile_placed, chooser
+                        });
+                        None
+                    }
+                };
+
+                self.render(hand);
+
+                action
             },
-            Some(ActionState::Merging { tile_placed, participants, selected }) => {
+            Some(ActionState::Merging { tile_placed, chooser }) => {
                 todo!();
             }
             Some(ActionState::ChoosingTile(tile_index)) => {
@@ -192,8 +218,44 @@ impl ActionPanel {
                     },
                 }
             },
-            Some(ActionState::ResolvingMergeStock { selling, keeping, trading, highlighted }) => {
-                todo!()
+            Some(ActionState::ResolvingMergeStock { selling, keeping, trading, mut highlighted }) => {
+                let action = match key {
+                    Key::Up => {
+                        // Indicates that the up arrow is highlighted
+                        highlighted = highlighted % 3 + 3;
+                        self.action = Some(ActionState::ResolvingMergeStock { selling, keeping, trading, highlighted });
+                        None
+                    },
+                    Key::Down => {
+                        // Indicates that the down arrow is highlighted
+                        highlighted = highlighted % 3;
+                        self.action = Some(ActionState::ResolvingMergeStock { selling, keeping, trading, highlighted });
+                        None
+                    },
+                    Key::Left => {
+                        // Overflow protection
+                        if highlighted == 0 { highlighted = 2; }
+                        if highlighted == 3 { highlighted = 5; }
+                        highlighted -= 1;
+                        self.action = Some(ActionState::ResolvingMergeStock { selling, keeping, trading, highlighted });
+                        None
+                    },
+                    Key::Right => {
+                        if highlighted == 2 { highlighted = 0; }
+                        if highlighted == 5 { highlighted = 3; }
+                        highlighted += 1;
+                        self.action = Some(ActionState::ResolvingMergeStock { selling, keeping, trading, highlighted });
+                        None
+                    },
+                    Key::Char('\n') => {
+                        Some(PlayerAction::ResolveMergeStock { selling, trading, keeping })
+                    }
+                    _ => None,
+                };
+
+                self.render(hand);
+
+                action
             }
             None => None,
         }
@@ -235,7 +297,7 @@ impl ActionPanel {
                         Some(ChoosingTile(tile_index)) => {
                             write_tiles(writer, hand, Some(*tile_index), self.tile_layout);
                         },
-                        Some(BuyingStock { purchases: _, available_companies, index }) => {
+                        Some(BuyingStock { purchases: _, index, chooser }) => {
                             write_tiles(writer, hand, None, self.tile_layout);
         
                             writer.set_overflow_mode(OverflowMode::Wrap);
@@ -248,22 +310,35 @@ impl ActionPanel {
         
                             writer.set_overflow_mode(OverflowMode::Truncate);
         
-                            company_chooser(
+                            write_company_chooser(
                                 writer,
-                                available_companies.get(*index as usize).map(|x| *x));
+                                chooser.selected_company(),
+                            );
                         },
-                        Some(FoundingCompany { tile_placed, available_companies, selected }) => {
+                        Some(FoundingCompany { tile_placed, chooser }) => {
                             write_tiles(writer, hand, None, self.tile_layout);
         
                             writer.write_str("Found which company?").unwrap();
+
+                            write_company_chooser(writer, chooser.selected_company())
                         },
-                        Some(Merging { tile_placed: _, participants, selected }) => {
+                        Some(Merging { tile_placed: _, chooser}) => {
                             write_tiles(writer, hand, None, self.tile_layout);
         
-                            writer.write_str("Found which company?").unwrap();
+                            writer.write_str("Choose the company to remain on the board.").unwrap();
+
+                            write_company_chooser(writer, chooser.selected_company())
                         },
                         Some(ResolvingMergeStock { selling, keeping, trading, highlighted }) => {
-                            
+                            let top_selected = highlighted / 3 == 1;
+                            let selected = highlighted % 3;
+
+                            write_number_selector_series(
+                                writer, 
+                                &[*selling, *keeping, *trading],
+                                top_selected,
+                                selected as usize
+                            );
                         }
                     }
                 }    
@@ -349,7 +424,7 @@ fn write_tile(writer: &mut TermWriter, tile: Tile, selected: bool) {
     }
 }
 
-fn company_chooser(writer: &mut TermWriter, company: Option<Company>) {
+fn write_company_chooser(writer: &mut TermWriter, company: Option<Company>) {
 
     // This is a bad design choice by Termion...
     use std::fmt;
@@ -382,7 +457,52 @@ fn company_chooser(writer: &mut TermWriter, company: Option<Company>) {
     writer.write_str("    < ").unwrap();
     let string = company.map(|c| c.to_string()).unwrap_or("---".to_owned());
     writer.write_bg_colored(&*string, NewType(company)).unwrap();
-    writer.write_str(" >").unwrap();
+    writer.write_str(" >\n").unwrap();
+}
+
+/// Writes a series of number selectors in a line.
+fn write_number_selector_series(writer: &mut TermWriter,
+    values: &[u8],
+    top_selected: bool,
+    selected: usize
+) {
+    // Write top row
+    for (i, _value) in values.iter().enumerate() {
+        writer.write_str("    ").unwrap();
+        if top_selected && i == selected {
+            writer.write_bg_colored("^^^", termion::color::White).unwrap();
+        } else {
+            writer.write_str("vvv").unwrap();
+        }
+    }
+
+    writer.write_str("\n").unwrap();
+
+    // Write row of selectors
+    for (_, value) in values.iter().enumerate() {
+        writer.write_str("    ").unwrap();
+        if value < &100 {
+            writer.write_str(" ").unwrap();
+        }
+        if value < &10 {
+            writer.write_str(" ").unwrap();
+        }
+        writer.write_str(&value.to_string()).unwrap()
+    }
+
+    writer.write_str("\n").unwrap();
+
+    // Write bottom row
+    for (i, _value) in values.iter().enumerate() {
+        writer.write_str("    ").unwrap();
+        if !top_selected && i == selected {
+            writer.write_bg_colored("vvv", termion::color::White).unwrap();
+        } else {
+            writer.write_str("vvv").unwrap();
+        }
+    }
+
+    writer.write_str("\n").unwrap();
 }
 
 /// An action request sent directly to the panel. This allows the
@@ -414,25 +534,74 @@ pub enum ActionPanelRequest {
 enum ActionState {
     ChoosingTile(usize),
     BuyingStock {
-        purchases: [Option<u8>; 3],
-        available_companies: Vec<Company>,
-        index: u8,
+        /// The purchases made so far
+        purchases: [Option<Company>; 3],
+        /// Which of the 3 companies is hovered over at the chooser
+        index: usize,
+        chooser: CompanyChooser,
     },
     FoundingCompany {
         tile_placed: Tile,
-        available_companies: Vec<Company>,
-        selected: u8,
+        chooser: CompanyChooser,
     },
     Merging {
         tile_placed: Tile,
-        participants: Vec<Company>,
-        selected: u8,
+        /// Chooses the company into which all other companies will consolidate
+        chooser: CompanyChooser,
     },
     ResolvingMergeStock {
         selling: u8,
         keeping: u8,
         trading: u8,
+        /// Indicates what part of the selection window is highlighted. `% 3`
+        /// result: 0 for selling, 1 for keeping, 2 for trading. `/ 3` result
+        /// indicates the direction highlighted: 0 for down, 1 for up.
         highlighted: u8,
+    }
+}
+
+/// Contains the data required to track a company selector box.
+#[derive(Debug)]
+struct CompanyChooser {
+    /// The array of companies included
+    included_companies: [Option<Company>; 8],
+    /// Specifies which company is being selected.
+    selected: i8,
+    /// Reference variable for the number of elements being selected
+    length: i8,
+}
+
+impl CompanyChooser {
+    /// Creates a new CompanyChooser, expecting `available_companies`
+    pub fn new(available_companies: &[Company], includes_null: bool) -> Self {
+        let mut included_companies = [None; 8];
+        
+        for (i, company) in available_companies.iter().enumerate() {
+            included_companies[i] = Some(*company)
+        }
+
+        let mut length = available_companies.len() as i8;
+        if includes_null { length += 1; }
+
+        debug_assert!(length != 0, "Constructed an empty CompanyChooser");
+
+        Self {
+            included_companies,
+            selected: 0,
+            length,
+        }
+    }
+
+    pub fn cycle_left(&mut self) {
+        self.selected = (self.selected - 1).rem_euclid(self.length);
+    }
+
+    pub fn cycle_right(&mut self) {
+        self.selected = (self.selected + 1).rem_euclid(self.length);
+    }
+
+    pub fn selected_company(&self) -> Option<Company> {
+        self.included_companies[self.selected as usize]
     }
 }
 
@@ -457,353 +626,3 @@ impl TileLayout {
         }
     }
 }
-
-// use termion::event::Key;
-// use tokio::sync::mpsc;
-
-// use crate::game::board::{Tile, Board};
-// use crate::game::messages::*;
-
-// use super::panels::PanelDim;
-
-// pub(super) struct ActionPanel {
-
-// }
-
-// impl ActionPanel {
-
-// }
-
-// impl ActionPanelGame {
-
-//     /// Directs the action panel to prompt a specific action from the user.
-//     pub fn request_action(&self, request: ActionRequest) {
-//         todo!();
-//     }
-
-//     /// Informs the action panel of a tile being placed on the board.
-//     pub fn place_tile(&mut self, placement: TilePlacement) {
-//         self.board.place_tile(placement);
-
-//         // TODO: rendering
-//     }
-
-//     /// Informs the action panel of a merge resolution.
-//     /// 
-//     /// # Panics
-//     /// 
-//     /// When called, this function assumes that there is already a merge in
-//     /// play. If that is not the case, this function panics.
-//     pub fn resolve_merge(&mut self, merge: &Merge) {
-//         self.board.resolve_merge(merge);
-
-//         // TODO: rendering
-//     }
-
-//     /// Informs the action panel of an update to the tiles in the player's hand.
-//     pub async fn refresh_tiles(&mut self, tiles: [Tile; 6]) {
-//         self.tiles = tiles;
-//         // TODO: Update the tiles on-screen
-//     }
-// }
-
-// // use termion::event::Key;
-// // use tokio::sync::mpsc;
-
-// // use crate::game::{Tile, Board, PlayerData};
-// // use crate::game::messages::{GameOver, ActionRequest, TilePlacementImplication};
-
-// // use super::{PanelDim, Panel, PanelHandler};
-
-// // pub(super) struct ActionPanel {
-// //     pub player_name: String
-// // }
-
-// // /// Sends data to the action panel.
-// // #[derive(Debug, Clone)]
-// // pub(super) struct ActionPanelHandler {
-// //     input: mpsc::Sender<Input>,
-// //     tiles: mpsc::Sender<Tile>,
-// // }
-
-// // impl Panel for ActionPanel {
-
-// //     type Handler = ActionPanelHandler;
-
-// //     /// Starts the action panel in a separate process, returning handles to it.
-// //     fn start(self,
-// //         key_receiver: mpsc::Receiver<Key>,
-// //         rendering_sender: mpsc::Sender<String>,
-// //         dim: PanelDim,
-// //     ) -> Self::Handler {
-// //         // Make the channels
-// //         let (input_sender, input_receiver) = mpsc::channel(32);
-// //         let (tile_sender, tile_receiver) = mpsc::channel(8);
-
-// //         let mut panel = RunningActionPanel {
-// //             dim,
-// //             rendering_sender,
-// //             input: input_receiver,
-// //             player_name: self.player_name,
-// //             tiles: tile_receiver,
-// //         };
-
-// //         tokio::spawn(async move {
-// //             panel.clear().await;
-
-// //             // Action panel event loop
-// //             loop {
-// //                 let (board, data) = match panel.lobby().await {
-// //                     Some(x) => x,
-// //                     None => break,
-// //                 };
-// //                 match panel.game(board, data).await {
-// //                     Some(x) => x,
-// //                     None => break,
-// //                 }
-// //             }
-// //         });
-
-// //         ActionPanelHandler {
-// //             input: input_sender,
-// //             tiles: tile_sender,
-// //         }
-// //     }
-// // }
-
-// // impl ActionPanelHandler {
-
-// //     /// Notifies the action panel of the end of a game.
-// //     pub async fn send_game_over(&self, reason: GameOver) {
-// //         self.input.send(Input::GameOver(reason)).await.unwrap()
-// //     }
-
-// //     /// Notifies the action panel of the start of a game.
-// //     pub async fn send_game_start(&self,
-// //         starting_cash: u32,
-// //         tiles_placed: Vec<Tile>,
-// //         play_order: Vec<String>
-// //     ) {
-// //         self.input.send(
-// //             Input::GameStart { starting_cash, tiles_placed, play_order }
-// //         ).await.unwrap()
-// //     }
-
-// //     /// Requests an action from the panel.
-// //     pub async fn request_action(&self, request: ActionRequest) {
-// //         self.input.send(Input::YourTurn(request)).await.unwrap()
-// //     }
-
-// //     /// Notifies the action panel that it's drawn a tile.
-// //     pub async fn send_tile(&self, tile: Tile) {
-// //         self.tiles.send(tile).await.unwrap()
-// //     }
-// // }
-
-// // impl PanelHandler for ActionPanelHandler {
-
-// // }
-
-// // /// Manages the action panel of the client, which is where things truly happen.
-// // struct RunningActionPanel {
-// //     dim: PanelDim,
-// //     rendering_sender: mpsc::Sender<String>,
-// //     input: mpsc::Receiver<Input>,
-// //     tiles: mpsc::Receiver<Tile>,
-// //     player_name: String,
-// // }
-
-// // impl RunningActionPanel {
-
-// //     async fn clear(&self) {
-
-// //         // Determine the cursor position
-// //         let cursor_x = self.dim.top_left.0 + 2;
-// //         let mut cursor_y = self.dim.top_left.1 as u16;
-
-// //         // Send a bunch of rendering messages
-// //         futures::future::join_all((0..self.dim.size.1).map(|_| {
-
-// //             self.rendering_sender.send(
-// //                 format!("{}{}",
-// //                     termion::cursor::Goto(cursor_x, cursor_y),
-// //                     " ".repeat(self.dim.size.0 as usize),
-// //                 )
-// //             )
-// //         })).await;
-
-// //         self.rendering_sender.send(
-// //             format!("{}", termion::clear::All),
-// //         ).await.ok();
-// //     }
-
-// //     /// Yielding [`None`] indicates that the client should shut down.
-// //     async fn lobby(&mut self) -> Option<(Board, Option<PlayerData>)> {
-
-// //         let mut players: Vec<(String, bool)> = Vec::new();
-// //         let mut highlighted_player: usize = 0;
-
-// //         self.clear().await;
-        
-// //         // Enter the event loop
-// //         loop {
-// //             let msg = self.input.recv().await?;
-    
-// //             match msg {
-// //                Input::PlayerJoin { name, spectating } => {
-
-// //                     players.push((name, spectating));
-
-// //                     // Rerender
-// //                     for (i, (player, spectating)) in players.iter().enumerate() {
-
-// //                         // Start with the goto
-// //                         let mut format_str = format!("{}", termion::cursor::Goto(3, 2 + i as u16));
-
-// //                         format_str += "[";
-
-// //                         // Format depending on if this line is highlighted
-// //                         if highlighted_player == i {
-// //                             format_str += &format!(
-// //                                 "{} {}",
-// //                                 termion::color::Cyan.fg_str(),
-// //                                 termion::color::Reset.fg_str()
-// //                             );
-// //                         } else {
-// //                             format_str += " ";
-// //                         }
-
-// //                         // Add the player name
-// //                         format_str += &format!("] {}\n", player);
-// //                         self.rendering_sender.send(format_str).await.ok();
-// //                     }
-// //                 }
-// //                 Input::GameOver(_) => {
-// //                     // Ignore; we're in the lobby
-// //                 },
-// //                 Input::YourTurn(_) => {
-// //                     // Ignore; we're in the lobby
-// //                 },
-// //                 Input::TilePlacement(_, _) => {
-// //                     // Ignore; we're in the lobby
-// //                 },
-// //                 Input::GameStart {
-// //                     starting_cash,
-// //                     tiles_placed,
-// //                     play_order: player_order, 
-// //                 } => {
-
-// //                     // Break out of the lobby
-// //                     return Some(self.set_up_game_data(starting_cash, tiles_placed, player_order).await?);
-// //                 },
-// //             }
-// //         }
-// //     }
-
-// //     async fn set_up_game_data(&mut self,
-// //         starting_cash: u32,
-// //         tiles_placed: Vec<Tile>,
-// //         player_order: Vec<String>
-// //     ) -> Option<(Board, Option<PlayerData>)> {
-
-// //         // Places the tiles on the board
-// //         let mut board = Board::new();
-// //         for tile in tiles_placed {
-// //             board.place_tile(tile, None);
-// //         }
-
-// //         let player_order = player_order.iter()
-
-// //             // Is this client spectating?
-// //             .enumerate()
-// //             .find_map(|(order, name)| {
-// //                 if name == &self.player_name { Some(order) }
-// //                 else { None }
-// //             });
-
-// //         // If it isn't, generate its player data
-// //         let player_data = match player_order {
-// //             Some(order) => {
-
-// //                 // Wait for tiles
-// //                 let mut tiles = [None; 6];
-
-// //                 for i in 0..6 {
-// //                     let tile = self.tiles.recv().await?;
-
-// //                     tiles[i] = Some(tile);
-// //                 }
-
-// //                 Some(PlayerData {
-// //                     money: starting_cash,
-// //                     holdings: Default::default(),
-// //                     tiles,
-// //                     order,
-// //                 })
-// //             },
-// //             None => None,
-// //         };
-
-// //         Some((board, player_data))
-// //     }
-
-// //     async fn game(&mut self, mut board: Board, data: Option<PlayerData>) -> Option<()> {
-        
-// //         self.clear().await;
-
-// //         // Enter the event loop
-// //         loop {
-// //             let msg = self.input.recv().await?;
-    
-// //             match msg {
-// //                 Input::PlayerJoin { name, spectating } => todo!(),
-// //                 Input::GameOver(_) => {
-                    
-// //                     // Go back to the lobby
-// //                     return Some(());
-// //                 },
-// //                 Input::YourTurn(action) => {
-// //                     todo!();
-// //                 },
-// //                 Input::TilePlacement(tile, implication) => {
-
-// //                     match implication {
-// //                         TilePlacementImplication::None => {
-// //                             board.place_non_merging_tile(tile);
-// //                         },
-// //                         TilePlacementImplication::FoundsCompany(company) => {
-// //                             board.found_company(tile, company);
-// //                         },
-// //                         TilePlacementImplication::MergesCompanies(merge) => todo!(),
-// //                     }
-
-// //                     // Rerender the board
-// //                 }
-// //                 Input::GameStart {
-// //                     starting_cash: _,
-// //                     tiles_placed: _,
-// //                     play_order: _, 
-// //                 } => {
-// //                     // Ignore; we're mid-game
-// //                 },
-// //             }
-// //         }
-// //     }
-// // }
-
-// // #[derive(Debug)]
-// // enum Input {
-// //     GameOver(GameOver),
-// //     GameStart {
-// //         starting_cash: u32,
-// //         tiles_placed: Vec<Tile>,
-// //         play_order: Vec<String>,
-// //     },
-// //     /// The client needs to deliver on some action.
-// //     YourTurn(ActionRequest),
-// //     TilePlacement(Tile, TilePlacementImplication),
-// //     PlayerJoin {
-// //         name: String,
-// //         spectating: bool,
-// //     }
-// // }
