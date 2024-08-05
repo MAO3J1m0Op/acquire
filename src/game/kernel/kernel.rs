@@ -17,7 +17,7 @@ pub struct GameKernel {
 }
 
 impl GameKernel {
-    
+
     /// Computes and pays the principle bonuses for the company in the defunct
     /// slot, and stores these bonuses into the state.
     pub fn pay_principle_bonuses(&mut self, defunct: Company)

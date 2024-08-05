@@ -57,7 +57,7 @@ impl Game<BuyingStock> {
     {
         // Check if the player can afford it
         let mut total_cost: u32 = 0;
-                
+
         for stock in stock.iter() {
             if let Some(company) = stock {
 
@@ -102,9 +102,9 @@ impl Game<BuyingStock> {
     ///    player's hand with a new tile.
     /// 3. If the hand of the active player is known, a [`None`] value indicates
     ///    that the boneyard used to draw tiles is empty.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// * If the hand of the active player is unknown, and `new_tile` is passed
     ///   a [`Some`] value, this function will panic.
     /// * This function panics if the `advancer` was not produced by this object.
@@ -139,7 +139,7 @@ impl Game<BuyingStock> {
             .any(|(company, stock_count)| {
                 data.kernel.board.company_exists(company) && *stock_count >= 25
             });
-        
+
         if out_of_stock {
             let state = GameOver::NoStock;
             return Err(Game { data, state });

@@ -102,7 +102,7 @@ impl Ord for FinalResult {
         self.final_money.cmp(&other.final_money)
     }
 }
-                    
+
 
 impl fmt::Display for FinalResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -180,7 +180,7 @@ impl fmt::Display for TaggedPlayerAction {
         match &self.action {
             PlayerAction::PlayTile { placement } => {
                 write!(f, " played tile {}", placement.tile)?;
-                
+
                 match placement.implication {
                     None => {},
                     Some(TilePlacementImplication::FoundsCompany(company)) => {
@@ -215,7 +215,7 @@ impl fmt::Display for TaggedPlayerAction {
             },
             PlayerAction::ResolveMergeStock { selling, trading, keeping } => {
                 let mut strings: Vec<String> = vec![];
-                
+
                 if *selling > 0 {
                     strings.push(format!("sold {selling} shares"));
                 }
@@ -231,7 +231,7 @@ impl fmt::Display for TaggedPlayerAction {
                 write!(f, "{}", strings.join(", "))?;
             },
         }
-        
+
         Ok(())
     }
 }
@@ -309,8 +309,8 @@ pub enum TilePlacementImplication {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Merge {
     /// The smaller companies that are being removed from the board by the
-    /// merging process. 
-    /// 
+    /// merging process.
+    ///
     /// TODO: manually write the [`Deserialize`] implementation so that this is
     /// never in an invalid state.
     defunct: [Option<Company>; 3],

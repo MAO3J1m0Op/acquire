@@ -137,7 +137,7 @@ impl RemoteClient {
                 msg = interface.recv() => {
 
                     if let Some(msg_result) = msg {
-                        
+
                         let msg = match msg_result {
                             Ok(v) => v,
                             Err(e) => return Ok(Err(e)),
@@ -251,7 +251,7 @@ impl RemoteServer {
         }
 
         else if reply_buf.starts_with(HANDSHAKE_REJECT_NEEDLE) {
-            
+
             // Get the rejection message
             let start = HANDSHAKE_REJECT_NEEDLE.len();
             let message = std::str::from_utf8(&reply_buf[start..])
@@ -275,7 +275,7 @@ impl RemoteServer {
         self.0.flush().await?;
         Ok(())
     }
-    
+
     /// Creates a player [`Interface`] that interfaces with this remote server.
     pub async fn connect_player(mut self, handshake: Handshake)
         -> io::Result<NewConnection<io::Error>>

@@ -87,7 +87,7 @@ pub fn parse_game_command(command: &str) -> Result<PlayerAction, CommandParseErr
             Ok(PlayerAction::ResolveMergeStock {
                 selling: sell.unwrap(),
                 trading: trade.unwrap(),
-                keeping: keep.unwrap() 
+                keeping: keep.unwrap()
             })
         },
         Some(_) => return Err(Expected("\"play\", \"buy\", or \"resolve\"")),
@@ -163,9 +163,9 @@ impl ClientGame {
     }
 
     /// Starts a new game.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// This function assumes that the server knows the
     /// state, and it will panic if the server requests to start a game when one
     /// is already in progress.
@@ -177,15 +177,15 @@ impl ClientGame {
     }
 
     /// Updates the client's game. Returns a mutable reference to the new game.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// This function assumes that all the validation work has been properly
     /// done server-side. Any unexpected/invalid [`PlayerAction`] will panic.
-    /// 
+    ///
     /// TODO: remove this panic condition and return a proper error.
     pub fn update(&mut self, action: &TaggedPlayerAction) {
-        
+
         // Take ownership of this instance's game
         let game_impl = self._impl.take()
             .expect("Game updated when not in progress.");
@@ -194,13 +194,13 @@ impl ClientGame {
 
         let new_game: Option<Game<kernel::Ambiguous>> = match &action.action {
             PlayerAction::PlayTile { placement } => {
-    
+
                 // The game should be in the placing tile phase
                 let stated_game = match game.disambiguate() {
                     GameDisambiguation::PlacingTile(g) => g,
                     _ => panic!("received tile placement when not in placing tile mode"),
                 };
-    
+
                 let advancer = stated_game.check_player_action(action)
                     .expect("Incorrect move received from server");
 
@@ -215,13 +215,13 @@ impl ClientGame {
                 Some(stated_game.advance_game(advancer).into())
             },
             PlayerAction::BuyStock{ stock: _ } => {
-    
+
                 // The game should be in buying stock phase
                 let stated_game = match game.disambiguate() {
                     GameDisambiguation::BuyingStock(g) => g,
                     _ => panic!("received stock when not in buying stock mode"),
                 };
-    
+
                 let advancer = stated_game.check_player_action(action)
                     .expect("Invalid purchase received from server");
                 stated_game.advance_game(advancer).ok().map(|g| g.into())
@@ -229,15 +229,15 @@ impl ClientGame {
             PlayerAction::ResolveMergeStock {
                 selling: _,
                 trading: _,
-                keeping: _ 
+                keeping: _
             } => {
-    
+
                 // The game should be in resolving merge phase
                 let stated_game = match game.disambiguate() {
                     GameDisambiguation::ResolvingMerge(game) => game,
                     _ => panic!("Received merge resolution when not in buying stock mode"),
                 };
-    
+
                 let advancer = stated_game.check_player_action(&action)
                     .expect("Invalid merge resolution received from server");
                 stated_game.step_merge(advancer).ok()
@@ -254,16 +254,16 @@ impl ClientGame {
     }
 
     /// Ends this game.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if there's no game to end.
     pub fn end(&mut self) -> Game<GameOver> {
         let game_impl = self._impl.take()
             .expect("called end() on a ClientGame not in progress");
         game_impl.game.end_early()
     }
-    
+
     pub fn game(&self) -> Option<&Game<kernel::Ambiguous>> {
         self._impl.as_ref().map(|i| &i.game)
     }

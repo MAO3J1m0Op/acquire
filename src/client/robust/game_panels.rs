@@ -19,7 +19,7 @@ pub struct GamePanels<'c> {
 }
 
 impl<'c> GamePanels<'c> {
-    
+
     /// Creates a new [`GamePanels`] of size zero. It must be resized later.
     pub fn new(
         game: ClientGame,
@@ -55,9 +55,9 @@ impl<'c> GamePanels<'c> {
     }
 
     /// Accepts a player action and re-renders the board panel.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// If there is no game in progress, this function panics.
     pub fn update_game(&mut self,
         action: &TaggedPlayerAction
@@ -189,7 +189,7 @@ impl<'c> GamePanels<'c> {
                                     None
                                 }
                             }
-                            
+
                         } else {
                             self.request_action(ActionRequest::PlayTile);
                             Some(Err(why.to_string()))

@@ -129,9 +129,9 @@ impl Game<MaybeResolvingMerge> {
 
     /// Skips the merge resolution phase of this turn, as it has been deemed
     /// unnecessary. This advances the game to the [`BuyingStock`] state.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// This function panics if the `skipper` was not produced by this object.
     pub fn skip_merge(self, skipper: DoneMerging)
         -> Game<BuyingStock>
@@ -146,9 +146,9 @@ impl Game<MaybeResolvingMerge> {
 
     /// Begins resolving a merge, advancing this game to the [`ResolvingMerge`]
     /// state.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// This function panics if the `starter` was not produced by this object.
     pub fn commence_merge(mut self, starter: ContinueMerging)
         -> Game<ResolvingMerge>
@@ -190,7 +190,7 @@ impl Game<ResolvingMerge> {
     pub fn principle_shareholders(&self) -> &[PrincipleShareholderResult] {
         &self.state.shareholder_results[..]
     }
-    
+
     /// Takes a [`PlayerAction`], and check if it was the requested action from
     /// the active player. If so, a [`MergeStep`] can be used to advance this
     /// game.
@@ -233,7 +233,7 @@ impl Game<ResolvingMerge> {
     {
         let resolving_player = &self.state
             .shareholder_results[self.state.resolving_player].player;
-                
+
         let player_obj = self.players().get(resolving_player).unwrap();
 
         // Ensure the player has that amount of stock
@@ -287,17 +287,17 @@ impl Game<ResolvingMerge> {
     /// Advances the merge along. If the merge resolution has to resolve the
     /// stock of an additional defunct company, a reference to the shareholder
     /// results will be returned.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// This function panics if the `step` was not produced by this object.
-    pub fn continue_merge(&mut self, step: MergeStep<ContinueMerging>) 
+    pub fn continue_merge(&mut self, step: MergeStep<ContinueMerging>)
         -> Option<&[PrincipleShareholderResult]>
     {
         self.apply_merge(step);
-        
+
         self.state.resolving_player += 1;
-        
+
         // Move to the next defunct company
         if self.state.resolving_player == self.state.shareholder_results.len() {
             let defunct = self.state.current_merge.pop_defunct().unwrap();
@@ -313,9 +313,9 @@ impl Game<ResolvingMerge> {
     }
 
     /// Finishes the merge and advances the game into the [`BuyingStock`] state.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// This function panics if the `step` was not produced by this object.
     pub fn finish_merge(self, step: MergeStep<DoneMerging>)
         -> Result<Game<BuyingStock>, Game<GameOver>>
@@ -331,10 +331,10 @@ impl Game<ResolvingMerge> {
             .any(|(company, stock_count)| {
                 game.data.kernel.board.company_exists(company) && *stock_count >= 25
             });
-        
+
         if out_of_stock {
             let state = GameOver::NoStock;
-            return Err(Game { 
+            return Err(Game {
                 data: game.data,
                 state,
             });

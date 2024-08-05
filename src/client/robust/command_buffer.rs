@@ -33,7 +33,7 @@ impl termion::color::Color for BufferMode {
             BufferMode::Admin => Yellow.write_fg(f),
         }
     }
-    
+
     fn write_bg(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use termion::color::*;
         match self {
@@ -249,7 +249,7 @@ impl CommandBuffer {
     /// this function returns [`None`] and does not modify anything else.
     pub fn flush(&mut self)
         -> Option<(String, BufferMode)>
-    { 
+    {
 
         if self.buffer.is_empty() { return None; }
 
@@ -345,4 +345,3 @@ mod test {
         Ok(())
     }
 }
-

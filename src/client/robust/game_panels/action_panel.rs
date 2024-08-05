@@ -195,7 +195,7 @@ impl ActionPanel {
                                 write_tiles(writer, hand, Some(new_offset as usize), self.tile_layout);
                             })
                         }
-                        
+
                         None
                     },
                     // Enter was pressed, so we emit the action
@@ -299,17 +299,17 @@ impl ActionPanel {
                         },
                         Some(BuyingStock { purchases: _, index, chooser }) => {
                             write_tiles(writer, hand, None, self.tile_layout);
-        
+
                             writer.set_overflow_mode(OverflowMode::Wrap);
-        
+
                             writer.new_line();
                             writer.new_line();
                             writer.write_str("Choose which stock to buy").unwrap();
                             writer.new_line();
                             writer.new_line();
-        
+
                             writer.set_overflow_mode(OverflowMode::Truncate);
-        
+
                             write_company_chooser(
                                 writer,
                                 chooser.selected_company(),
@@ -317,14 +317,14 @@ impl ActionPanel {
                         },
                         Some(FoundingCompany { tile_placed, chooser }) => {
                             write_tiles(writer, hand, None, self.tile_layout);
-        
+
                             writer.write_str("Found which company?").unwrap();
 
                             write_company_chooser(writer, chooser.selected_company())
                         },
                         Some(Merging { tile_placed: _, chooser}) => {
                             write_tiles(writer, hand, None, self.tile_layout);
-        
+
                             writer.write_str("Choose the company to remain on the board.").unwrap();
 
                             write_company_chooser(writer, chooser.selected_company())
@@ -334,14 +334,14 @@ impl ActionPanel {
                             let selected = highlighted % 3;
 
                             write_number_selector_series(
-                                writer, 
+                                writer,
                                 &[*selling, *keeping, *trading],
                                 top_selected,
                                 selected as usize
                             );
                         }
                     }
-                }    
+                }
             });
         }
     }
@@ -506,7 +506,7 @@ fn write_number_selector_series(writer: &mut TermWriter,
 }
 
 /// An action request sent directly to the panel. This allows the
-/// [`ActionPanel`] to be unknowing of the current state of the game. 
+/// [`ActionPanel`] to be unknowing of the current state of the game.
 pub enum ActionPanelRequest {
     PlaceTile,
     BuyStock { available_companies: CompanyMap<bool> },
@@ -575,7 +575,7 @@ impl CompanyChooser {
     /// Creates a new CompanyChooser, expecting `available_companies`
     pub fn new(available_companies: &[Company], includes_null: bool) -> Self {
         let mut included_companies = [None; 8];
-        
+
         for (i, company) in available_companies.iter().enumerate() {
             included_companies[i] = Some(*company)
         }
@@ -607,7 +607,7 @@ impl CompanyChooser {
 
 #[derive(Debug, Clone, Copy)]
 enum TileLayout {
-    /// Preferred option; 2 rows, 3 columns. 
+    /// Preferred option; 2 rows, 3 columns.
     Grid2x3,
     /// 3 rows, 2 columns.
     Grid3x2,

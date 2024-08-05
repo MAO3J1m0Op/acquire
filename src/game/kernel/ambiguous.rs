@@ -45,7 +45,7 @@ impl Game<Ambiguous> {
     /// constructs an object to represent the game in that state.
     pub fn disambiguate(self) -> GameDisambiguation {
         use GameDisambiguation::*;
-        
+
         match self.state.state {
             AmbiguousState::PlacingTile(state) => PlacingTile(Game {
                 data: self.data,

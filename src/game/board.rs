@@ -41,7 +41,7 @@ impl Board {
     pub fn place_tile(&mut self, placement: TilePlacement) {
         match placement.implication {
             None => {
-                
+
                 // Places the tile on the board.
                 self.place_non_merging_tile(placement.tile);
             },
@@ -67,7 +67,7 @@ impl Board {
         let pos = &mut self.tiles[
             ((tile.row()-1) * num_cols + (Tile::col_as_num(tile.col())-1)) as usize
         ];
-        
+
         let replaced = std::mem::replace(pos, Some(affiliation));
 
         // Update company size for the replaced company
@@ -85,9 +85,9 @@ impl Board {
 
     /// Places a tile onto the board, figuring out which chain it should join,
     /// if any.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// If the tile being placed would merge two companies, this
     /// function will panic.
     fn place_non_merging_tile(&mut self, tile: Tile) {
@@ -98,7 +98,7 @@ impl Board {
 
             // Skip empty tiles
             if let Some(neighbor_state) = self[neighbor] {
-            
+
                 // If this tile's expected affiliation is different from that of
                 // the neighbor's, that means there's a merge.
                 if let Some(neighbor_affil) = neighbor_state {
@@ -131,9 +131,9 @@ impl Board {
 
     /// Updates the companies to finish a merge, resolving the companies in
     /// play.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// This function assumes the merger tile is already on the board and panics
     /// if that is not the case.
     pub fn resolve_merge(&mut self, merge: &Merge) {
@@ -196,7 +196,7 @@ impl Board {
     }
 
     /// Checks if a tile is "dead".
-    /// 
+    ///
     /// A company is "safe" if it has more than 10 tiles in play on the board.
     /// Safe companies cannot be merged into other companies. Therefore, any
     /// tile that would merge two safe companies cannot be played and is
@@ -215,7 +215,7 @@ impl Board {
     }
 
     /// Checks if a tile placement, with its associated implication, is legal.
-    pub fn check_implication(&self, placement: TilePlacement) 
+    pub fn check_implication(&self, placement: TilePlacement)
         -> Result<(), IncorrectImplication>
     {
         let mut bordering_tiles = HashSet::new();
@@ -228,7 +228,7 @@ impl Board {
 
         // See if the tile was placed with any neighboring tiles
         if bordering_tiles.is_empty() {
-            
+
             // There shouldn't be implication
             if &placement.implication != &None {
                 return Err(IncorrectImplication::ShouldBeNone)
@@ -236,12 +236,12 @@ impl Board {
         }
 
         let bordering_unaffiliated_tiles = bordering_tiles.remove(&None);
-        
+
         // How many companies are being bordered
         match bordering_tiles.len() {
             // This tile borders no companies
             0 => {
-                
+
                 // This tile should found a company
                 if bordering_unaffiliated_tiles {
 
@@ -320,7 +320,7 @@ impl Board {
     pub fn company_is_safe(&self, company: Company) -> bool {
         self.company_sizes[company] > 10
     }
-    
+
     /// Gets the stock price per share of a given company. If the company
     /// doesn't exist, zero will be returned.
     pub fn stock_price(&self, company: Company) -> u32 {
@@ -353,14 +353,14 @@ impl TermRender for Board {
         for c in 'a'..=Tile::LAST_COL {
 
             term.new_line();
-            
+
             // Write the legend for row letters
             if Tile::col_as_num(c) % 2 == 1 {
                 term.write_char(c)?;
             } else {
                 term.write_char(' ')?;
             }
-            
+
             for r in 1..=Tile::NUM_ROWS {
                 let tile = Tile::new(r, c);
                 let pos = self[tile];
@@ -370,7 +370,7 @@ impl TermRender for Board {
                     Some(affiliation) => {
                         match affiliation {
                             Some(company) => {
-                                
+
                                 // Determine the character
                                 let temp = &[company.char() as u8];
                                 let str = if self.headquarters[company] == Some(tile) {

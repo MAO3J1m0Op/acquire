@@ -16,7 +16,7 @@ pub async fn run<E: Send + 'static>(mut connection: NewConnection<E>) -> Result<
             connection.server_state.game_history.take()
         )));
     let game_copy = Arc::clone(&game);
-    
+
     // Exit handlers
     let (exit_sender, exit_recv) = oneshot::channel();
 

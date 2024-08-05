@@ -29,7 +29,7 @@ pub async fn run_io(connection: NewConnection<io::Error>) -> io::Result<()> {
         Err(err) => Err(err),
     }
 }
-    
+
 /// Starts the client for the specified player interface.
 pub async fn run<E>(mut connection: NewConnection<E>) -> io::Result<Result<(), E>> {
 
@@ -143,7 +143,7 @@ impl<'c> ClientPanels<'c> {
 
     /// Returns a client message that may have been produced.
     /// # Return value
-    /// 
+    ///
     /// * `Err(...)` indicates an I/O error.
     /// * `Ok(None)` indicates that the player wishes to exit.
     /// * `Ok(Some(None))` indicates that the server should continue, but no
@@ -176,7 +176,7 @@ impl<'c> ClientPanels<'c> {
                             None => None,
                         };
                         let msg = msg.map(|m| ClientMessage::TakingTurn(m));
-                        
+
                         return Ok(Some(msg));
                     }
                 }
@@ -220,7 +220,7 @@ impl<'c> ClientPanels<'c> {
     }
 
     /// # Return value
-    /// 
+    ///
     /// * `Err(...)` indicates an I/O error.
     /// * `Ok(None)` indicates that a [`ServerBroadcast::Shutdown`] was received
     ///   and the server is closing.

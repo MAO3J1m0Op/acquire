@@ -88,18 +88,18 @@ impl ServerGame {
                 )
             })
             .collect();
-        
+
         // Make the HashMap to be sent
         let player_tiles: HashMap<_, _> = initial_hands.iter()
             .map(|(k, v)| (k.clone(), Hand::from(*v)))
             .collect();
 
         let game_start_info = GameStart {
-            starting_cash, 
+            starting_cash,
             play_order: players.into_boxed_slice(),
             tiles_placed: tiles.into_boxed_slice(),
         };
-    
+
         let game = Game::start(&game_start_info);
 
         // Broadcast the game start message
@@ -154,12 +154,12 @@ impl ServerGame {
                         let success = game_impl.player_tiles
                             .get_mut(&action.player_name).unwrap()
                             .remove_tile(advance.placement().tile);
-                        
+
                         // Return an error if player doesn't have the tile in their hand
                         if !success {
                             Err((game.into(), InvalidMessageReason::TileNotFound))
                         }
-    
+
                         else {
 
                             // Send the message
@@ -172,9 +172,9 @@ impl ServerGame {
                                     Ok(Ok(game.skip_merge(no_merge).into()))
                                 },
                                 Err(merge) => {
-        
+
                                     let game = game.commence_merge(merge);
-        
+
                                     // Send the defunct company message
                                     self.broadcaster.send(ServerBroadcast::CompanyDefunct {
                                         defunct: game.current_merge().0,
@@ -182,7 +182,7 @@ impl ServerGame {
                                             .to_vec()
                                             .into_boxed_slice()
                                     }).unwrap();
-        
+
                                     Ok(Ok(game.into()))
                                 },
                             }
@@ -197,12 +197,12 @@ impl ServerGame {
                 match game.check_player_action(&action) {
                     Ok(advance) => {
                         self.broadcast_player_action(history, action.clone());
-    
+
                         match advance {
                             Ok(merge) => {
                                 let mut game = game;
                                 let another_defunct = game.continue_merge(merge);
-    
+
                                 if let Some(next_merge) = another_defunct {
                                     self.broadcaster.send(ServerBroadcast::CompanyDefunct {
                                         defunct: game.current_merge().0,
@@ -211,7 +211,7 @@ impl ServerGame {
                                             .into_boxed_slice()
                                     }).unwrap();
                                 };
-    
+
                                 Ok(Ok(game.into()))
                             },
                             Err(merge_done) => {
@@ -228,7 +228,7 @@ impl ServerGame {
                 match game.check_player_action(&action) {
                     Ok(advance) => {
                         self.broadcast_player_action(history, action.clone());
-    
+
                         // Draw and send the new tile
                         let new_tile = game_impl.boneyard.remove().unwrap();
                         game_impl.player_tiles.get_mut(&action.player_name).unwrap()
@@ -238,7 +238,7 @@ impl ServerGame {
                             target_player: action.player_name.clone(),
                             message: PrivateBroadcast::TileDraw { tile: new_tile }
                         }).unwrap();
-    
+
                         Ok(game.advance_game(advance).map(|g| g.into()))
                     },
                     Err(invalid) => {
@@ -294,19 +294,19 @@ impl ServerGame {
                     });
 
                 // Send the game over message
-                self.broadcaster.send(ServerBroadcast::GameOver { 
+                self.broadcaster.send(ServerBroadcast::GameOver {
                     reason,
                     results: results.final_standings
                 }).unwrap();
             },
         };
     }
-    
+
     /// Attempts to swap a dead tile out of the player's hand. If the player
     /// does not have the tile in question, this function will notify the player
     /// as necessary.
     pub fn swap_dead_tile(&mut self, player_name: Box<str>, tile: Tile) {
-        
+
         let game_impl = match self._impl.as_mut() {
             Some(v) => v,
             None => {
@@ -389,7 +389,7 @@ impl ServerGame {
             });
 
         // Send the game over message
-        self.broadcaster.send(ServerBroadcast::GameOver { 
+        self.broadcaster.send(ServerBroadcast::GameOver {
             reason,
             results: results.final_standings
         }).unwrap();
@@ -416,7 +416,7 @@ impl ServerGame {
 //         .unzip();
 
 //     let game_start_info = GameStart {
-//         starting_cash, 
+//         starting_cash,
 //         play_order: players.into_boxed_slice(),
 //         tiles_placed: tiles.into_boxed_slice(),
 //     };
@@ -602,7 +602,7 @@ impl ServerGame {
 //                 });
 
 //             // Send the game over message
-//             broadcaster.send(ServerBroadcast::GameOver { 
+//             broadcaster.send(ServerBroadcast::GameOver {
 //                 reason,
 //                 results: results.final_standings
 //             }).unwrap();
@@ -718,7 +718,7 @@ impl ServerGame {
 //     let player_name = action.player_name.clone();
 //     match game.check_player_action(&action) {
 //         Ok(advancer) => {
-            
+
 //             broadcaster.send(ServerBroadcast::PlayerMove {
 //                 action: TaggedPlayerAction {
 //                     player_name: player_name.clone(),
@@ -749,7 +749,7 @@ impl ServerGame {
 //         // Possibly send principle shareholder results
 //         if game.beginning_of_new_merge() {
 //             broadcaster.send(ServerBroadcast::CompanyDefunct {
-//                 defunct: game.current_merge().0, 
+//                 defunct: game.current_merge().0,
 //                 results: game.principle_shareholders()
 //                     .to_vec()
 //                     .into_boxed_slice()
@@ -759,7 +759,7 @@ impl ServerGame {
 //         // Request the action from the player
 //         let (defunct, into) = game.current_merge();
 //         request_action(&broadcaster,
-//             game.active_player()    
+//             game.active_player()
 //                 .to_string()
 //                 .into_boxed_str(),
 //             ActionRequest::ResolveMergeStock {
@@ -970,7 +970,7 @@ impl ServerGame {
 //                 }
 //                 None => 1,
 //             };
-            
+
 //             vec.push(
 //                 (
 //                     name.clone(),
@@ -1016,7 +1016,7 @@ impl ServerGame {
 //             })
 //             .collect()
 //     }
-    
+
 //     /// Resolves one defunct company merging into one larger company.
 //     async fn resolve_a_merge(&mut self, defunct: Company, into: Company) -> MaybeGameOver<()> {
 
@@ -1033,10 +1033,10 @@ impl ServerGame {
 //                     )
 //                 }
 //             );
-                
+
 //             let (sender, selling, trading, keeping)
 //                 = self.await_action(|game, action| {
-                
+
 //                 if let PlayerActionKind::ResolveMergeStock {
 //                     selling,
 //                     trading,
@@ -1083,7 +1083,7 @@ impl ServerGame {
 
 //         Ok(())
 //     }
-    
+
 //     async fn resolve_merge(&mut self, merge: &Merge) -> MaybeGameOver<()> {
 //         for defunct in &merge.defunct {
 //             self.resolve_a_merge(*defunct, merge.into).await?;
@@ -1091,7 +1091,7 @@ impl ServerGame {
 
 //         Ok(())
 //     }
-    
+
 //     /// Requires a player to take their turn.
 //     async fn one_turn(&mut self, player: &String) -> MaybeGameOver<()> {
 
@@ -1111,7 +1111,7 @@ impl ServerGame {
 //                 }
 
 //                 let player_obj = game.players.get(&action.player_name).unwrap();
-                
+
 //                 // Find the tile in their hand
 //                 let position = player_obj.tiles.iter().position(|&t| t == Some(tile))
 //                     .ok_or(InvalidMessageReason::TileNotFound)?;
@@ -1161,7 +1161,7 @@ impl ServerGame {
 //             message: PrivateSpecificBroadcast::YourTurn(ActionRequest::BuyStock)
 //         });
 
-//         let (stock, total_cost) = 
+//         let (stock, total_cost) =
 //             self.await_action(|game, action| {
 
 //             if player != &action.player_name {
@@ -1172,7 +1172,7 @@ impl ServerGame {
 
 //                 // Check if the player can afford it
 //                 let mut total_cost: u32 = 0;
-                    
+
 //                 for stock in stock.iter() {
 //                     if let Some(company) = stock {
 
@@ -1237,7 +1237,7 @@ impl ServerGame {
 
 //     /// Checks if the game is over.
 //     fn is_game_over(&self) -> Option<GameOver> {
-        
+
 //         // Any dominating companies?
 //         let possible_dominator = self.board.company_sizes.iter()
 //             .find(|(_, size)| **size >= 41);
@@ -1251,7 +1251,7 @@ impl ServerGame {
 //                 !(0..=1).contains(&self.board.company_sizes[company])
 //                     && *stock_count >= 25
 //             });
-        
+
 //         if out_of_stock {
 //             return Some(GameOver::NoStock)
 //         }

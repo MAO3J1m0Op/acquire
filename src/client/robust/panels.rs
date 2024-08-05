@@ -12,7 +12,7 @@ impl PanelDim {
     /// quantity between 0 and 1, indicates the proportion of the original
     /// segment that will be dedicated to the second segment, with 0.5
     /// indicating an even split, 0 indicating the first number receives it all, and
-    /// 1 indicating the second segment receives it all. 
+    /// 1 indicating the second segment receives it all.
     #[inline]
     fn split(num: u16, weight: f64) -> (u16, u16) {
         let left = num as f64 * weight;

@@ -59,7 +59,7 @@ impl TermPanel {
 
         let stdout = HideCursor::from(IntoRawMode::into_raw_mode(stdout)?);
         let (key_sender, key_receiver) = mpsc::channel(1);
-        
+
         std::thread::spawn(move || {
 
             let stdin = io::stdin();
@@ -68,7 +68,7 @@ impl TermPanel {
             loop {
                 let key = stdin.next().unwrap().unwrap();
                 let result = key_sender.blocking_send(key);
-                
+
                 // SendError means the receiver is closed, ergo this task should end.
                 if let Err(_why) = result {
                     break;
@@ -207,7 +207,7 @@ impl TermPanel {
         if success {
             self.dim = new_dim;
         }
-        
+
         success
     }
 }
@@ -219,43 +219,43 @@ pub struct TermWriter<'a> {
     panel: &'a TermPanel,
     term: &'a mut TermControls,
     /// The position of the cursor within the panel.
-    /// 
+    ///
     /// # Invariants
-    /// 
+    ///
     /// The `x` position is always contained within the range
     /// `0..=panel.size.0`, and the `y` position is always contained within the
     /// range `0..=panel.size.1.`
-    /// 
+    ///
     /// ## Writable
-    /// 
+    ///
     /// This state is indicated by the position being contained fully within the
     /// bounds specified by the `panel` variable. In this state, characters can
     /// always be added to the buffer regardless of kind. Reaching the end of
     /// the line in `Truncate` mode will place the panel in the `Not Writable -
     /// Full Line` state, and filling up or reaching the bottom line will place
     /// the panel in the `Not Writable - Full Panel` state.
-    /// 
+    ///
     /// ## Writable - Last Line
-    /// 
+    ///
     /// Indicated by the `y` coordinate being equal to `panel.size.1 - 1` (which
     /// is still contained within the bounds of the panel), this state behaves
     /// exactly as the `Writable` state except that new line characters will put
     /// the panel into the `Not Writable - Full Panel` state.
-    /// 
+    ///
     /// ## Not Writable - Full Line
-    /// 
+    ///
     /// This state is only accessible if the overflow mode is set to `Truncate`.
     /// This state is indicated by a `y` position that is fully contained within
     /// the bounds of `panel`, but an `x` position that is equal to
     /// `panel.size.0`. A new line character will advance the cursor to the next
     /// line and put the panel in the `Writable` state, but all other characters
     /// until the new line will be ignored.
-    /// 
+    ///
     /// ## Not Writable - Full Panel
-    /// 
+    ///
     /// This state is indicated by a `y` position that is equal to
     /// `panel.size.1`. In this state, all characters are ignored.
-    /// 
+    ///
     cursor_pos: (u16, u16),
     overflow_mode: OverflowMode,
 }
@@ -387,7 +387,7 @@ impl<'a> TermWriter<'a> {
                 },
             }
         }
-        
+
         else { true }
     }
 

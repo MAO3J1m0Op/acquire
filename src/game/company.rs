@@ -284,7 +284,7 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for CompanyMap<T> {
             map.luxor,
             map.tower
         ] })
-    }   
+    }
 }
 
 #[derive(Debug, Deserialize)]

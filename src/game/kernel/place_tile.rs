@@ -25,9 +25,9 @@ impl Game<PlacingTile> {
     /// Takes a [`PlayerAction`], and check if it was the requested action from
     /// the active player. If so, a [`PlacingTileStateAdvance`] can be used to
     /// advance this game.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Calling this function assumes that the player whose turn it is has a
     /// complete hand. If that is not the case, this function panics.
     pub fn check_player_action(&self, action: &TaggedPlayerAction)
@@ -50,7 +50,7 @@ impl Game<PlacingTile> {
             Err(InvalidMessageReason::OutOfTurn)
         }
     }
-    
+
     /// Places a tile as the active player and checks if the tile with its
     /// implication is valid. If the move was valid, a
     /// [`PlacingTileStateAdvance`] is returned that can be used to advance this
@@ -64,11 +64,11 @@ impl Game<PlacingTile> {
             placement,
         })
     }
-    
+
     /// Advances the game to the next state, which is [`MaybeResolvingMerge`].
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// This function panics if the `advancer` was not produced by this object.
     pub fn advance_game(self, advancer: PlacingTileStateAdvance)
         -> Game<MaybeResolvingMerge>

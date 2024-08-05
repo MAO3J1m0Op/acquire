@@ -16,9 +16,9 @@ mod game;
 /// that the host will use to interface with the game. Closing either the sender
 /// or receiver indicates that the host has quit and thus, the server will
 /// close.
-/// 
+///
 /// # Host Quitting Procedure
-/// 
+///
 /// Dropping/closing the receiver will likely cause the host's client process to
 /// exit, which will abort the program before the server has the time to
 /// gracefully exit. Instead, drop the sender while continuing to listen to
@@ -76,7 +76,7 @@ impl Server {
             game,
             broadcaster,
             client_sender,
-        };    
+        };
 
         // Create the host interface
         let shutdown = Arc::new(Notify::new());
@@ -108,10 +108,10 @@ impl Server {
 
     /// Connects a player to the server, starting a process that transfer
     /// messages between the player and the server. Returns [`None`] if the
-    /// player was not connected because the passed name was taken. 
-    /// 
+    /// player was not connected because the passed name was taken.
+    ///
     /// # Disconnecting
-    /// 
+    ///
     /// To disconnect from the server, the client managing these channels should
     /// drop the sender first. The client should then continue to wait for
     /// messages on the receiver until the `recv` method returns [`None`]. This
@@ -247,7 +247,7 @@ impl Server {
                         break
                     }
                 };
-                
+
                 let result = match broadcast {
 
                     // Handle the new tile of buying stock
@@ -338,7 +338,7 @@ impl Server {
                     break;
                 }
             }
-        
+
             dbg!("Server to player closed");
             shutdown.notify_waiters();
         });
@@ -457,7 +457,7 @@ impl ConnectionManager {
 
         assert!(max_players != 0, "max_players must not be zero");
         assert!(max_connections != 0, "max_connections must not be zero");
-        assert!(max_players <= 15, 
+        assert!(max_players <= 15,
             "max_players too high; expected 15, got {max_players}");
 
         Self {
@@ -535,7 +535,7 @@ impl ConnectionManager {
 
         if self.connections.contains_key(&handshake.player_name) { return Err(NameTaken); }
         if let Some(max_connections) = self.max_connections {
-            if self.connection_count() == max_connections { 
+            if self.connection_count() == max_connections {
                 return Err(MaxConnectionsReached);
             }
         }
@@ -619,14 +619,14 @@ pub struct NewConnection<E> {
 #[derive(Debug)]
 #[must_use]
 pub struct Interface<E> {
-    sender: mpsc::Sender<ClientMessage>, 
+    sender: mpsc::Sender<ClientMessage>,
     recv: mpsc::Receiver<Result<ServerMessage, E>>,
 }
 
 impl<E> Interface<E> {
 
     pub fn new(
-        sender: mpsc::Sender<ClientMessage>, 
+        sender: mpsc::Sender<ClientMessage>,
         recv: mpsc::Receiver<Result<ServerMessage, E>>,
     ) -> Self {
         Self { sender, recv }

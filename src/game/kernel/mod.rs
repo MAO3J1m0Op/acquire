@@ -73,7 +73,7 @@ struct GameImpl {
 impl GameImpl {
     pub fn new(kernel: GameKernel, first_player: Box<str>) -> Self {
         Self {
-            kernel, 
+            kernel,
             player: first_player,
             id: GAME_ID.fetch_add(1, Ordering::Relaxed)
         }
@@ -163,7 +163,7 @@ impl Game<GameOver> {
 
                 // Sell every player's remaining stock
                 for (_player, player_data) in &mut data.kernel.players {
-                    player_data.money += data.kernel.board.stock_price(company) 
+                    player_data.money += data.kernel.board.stock_price(company)
                         * player_data.holdings[company] as u32;
                 }
 
@@ -225,7 +225,7 @@ mod test {
     use crate::game::tile::Tile;
 
     use super::Game;
-    
+
     #[test]
     pub fn client_side_game() {
 

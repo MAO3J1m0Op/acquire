@@ -125,7 +125,7 @@ impl FromStr for Tile {
             },
             None => return Err(InvalidColumn(col_str.to_owned())),
         };
-        
+
         Ok(Tile { row, col: col as u8 })
     }
 }
