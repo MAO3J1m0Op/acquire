@@ -163,10 +163,12 @@ pub enum TileFromStrError {
     InvalidColumn(String),
 }
 
+pub const HAND_SIZE: usize = 6;
+
 /// Represents a player's hand of tiles.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Hand {
-    tiles: [Option<Tile>; 6]
+    tiles: [Option<Tile>; HAND_SIZE]
 }
 
 impl Hand {
@@ -174,7 +176,7 @@ impl Hand {
     /// runs out of tiles before drawing all of the hand, [`Err`] with a
     /// partially-filled [`Hand`] instance will be returned instead.
     pub fn from_boneyard(boneyard: &mut Boneyard<Tile>) -> Result<FullHand, Hand> {
-        let hand = Self { tiles: [(); 6].map(|()| boneyard.remove()) };
+        let hand = Self { tiles: [(); HAND_SIZE].map(|()| boneyard.remove()) };
         FullHand::try_from(hand).map_err(|_| hand)
     }
 
@@ -255,7 +257,7 @@ impl<'de> Deserialize<'de> for Hand {
 /// drawing from a [`Boneyard`] of tiles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FullHand {
-    tiles: [Tile; 6]
+    tiles: [Tile; HAND_SIZE]
 }
 
 impl FullHand {
