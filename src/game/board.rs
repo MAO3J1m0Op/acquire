@@ -296,6 +296,16 @@ impl Board {
                             return Err(IncorrectImplication::LargeIntoSmall);
                         }
 
+                        // Ensure companies are listed smallest to largest in the merge
+                        let mut prev_size = 0;
+                        for defunct in merge.defunct() {
+                            let curr_size = self.company_sizes[defunct];
+                            if prev_size > curr_size {
+                                return Err(IncorrectImplication::BadDefunctOrder);
+                            }
+                            prev_size = curr_size;
+                        }
+
                         // See if any defunct companies are safe
                         if merge.defunct().any(|cmp| self.company_is_safe(cmp)) {
                             return Err(IncorrectImplication::DeadTile);
