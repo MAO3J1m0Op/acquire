@@ -17,7 +17,7 @@ pub struct ServerGame {
 
 #[derive(Debug)]
 struct ServerGameImpl {
-    boneyard: Boneyard<Tile>,
+    boneyard: Boneyard,
     game: Game<kernel::Ambiguous>,
     player_tiles: HashMap<Box<str>, Hand>,
     start: GameStart,

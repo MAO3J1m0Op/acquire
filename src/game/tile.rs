@@ -1,5 +1,6 @@
 use std::{fmt, str::FromStr};
 
+use arrayvec::ArrayVec;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,21 +34,21 @@ impl Tile {
         self.col as char
     }
 
-    pub fn boneyard() -> Boneyard<Self> {
-        let mut boneyard = Vec::with_capacity(
-            Self::NUM_ROWS as usize * Self::col_as_num(Self::LAST_COL) as usize
-        );
-
+    pub fn boneyard() -> Boneyard {
+        let mut boneyard = ArrayVec::new();
         for row in 1..=Self::NUM_ROWS {
             for col in 'a'..=Self::LAST_COL {
                 boneyard.push(Tile::new(row, col));
             }
         }
 
-        Boneyard::new(boneyard)
+        Boneyard {
+            boneyard,
+            stacked: false,
+        }
     }
 
-    pub fn col_as_num(chr: char) -> u8 {
+    pub const fn col_as_num(chr: char) -> u8 {
         (chr as u8) - ('a' as u8) + 1
     }
 
@@ -175,7 +176,7 @@ impl Hand {
     /// Creates a new hand by drawing tiles from a [`Boneyard`]. If the boneyard
     /// runs out of tiles before drawing all of the hand, [`Err`] with a
     /// partially-filled [`Hand`] instance will be returned instead.
-    pub fn from_boneyard(boneyard: &mut Boneyard<Tile>) -> Result<FullHand, Hand> {
+    pub fn from_boneyard(boneyard: &mut Boneyard) -> Result<FullHand, Hand> {
         let hand = Self { tiles: [(); HAND_SIZE].map(|()| boneyard.remove()) };
         FullHand::try_from(hand).map_err(|_| hand)
     }
@@ -332,38 +333,65 @@ impl TryFrom<Hand> for FullHand {
     }
 }
 
+const BOARD_SIZE: usize = (Tile::NUM_ROWS * Tile::col_as_num(Tile::LAST_COL)) as usize;
+
 /// A collection from which items are removed at random.
 #[derive(Debug)]
-pub struct Boneyard<T> {
-    boneyard: Vec<T>,
+pub struct Boneyard {
+    boneyard: ArrayVec<Tile, BOARD_SIZE>,
+    /// For testing purposes: if marked false, the boneyard will draw randomly.
+    /// If marked true, the boneyard will always draw from the back of the list.
+    stacked: bool,
 }
 
-impl<T> Boneyard<T> {
-    pub fn new(initial: Vec<T>) -> Self {
-        Self { boneyard: initial }
+impl Boneyard {
+    /// Creates a boneyard that produces a predetermined sequence of tiles.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the provided slice is larger than the number of tiles on the
+    /// board. This can be done simply by avoiding repeats.
+    pub fn stacked(initial: &[Tile]) -> Self {
+        // Reverse because [`Vec::pop`] pulls from the back
+        let mut boneyard = ArrayVec::new();
+        for tile in initial.iter().rev() {
+            boneyard.push(*tile);
+        }
+        Self {
+            boneyard,
+            stacked: true,
+        }
     }
 
     /// Takes a random value from the boneyard. Returns [`None`] if the boneyard
     /// is empty.
-    pub fn remove(&mut self) -> Option<T> {
+    pub fn remove(&mut self) -> Option<Tile> {
 
-        // Get a random index
-        let idx: usize = rand::random();
-        let idx = idx % self.boneyard.len();
+        if self.stacked {
 
-        let last = self.boneyard.pop()?;
+            // Draw from the back
+            self.boneyard.pop()
 
-        if idx == self.boneyard.len() {
-            Some(last)
         } else {
-            Some(std::mem::replace(&mut self.boneyard[idx], last))
+
+            // Get a random index
+            let idx: usize = rand::random();
+            let idx = idx % self.boneyard.len();
+
+            let last = self.boneyard.pop()?;
+
+            if idx == self.boneyard.len() {
+                Some(last)
+            } else {
+                Some(std::mem::replace(&mut self.boneyard[idx], last))
+            }
         }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::{Tile, TileFromStrError};
+    use super::{Boneyard, Tile, TileFromStrError};
 
     #[test]
     fn tile_parsing() {
@@ -372,5 +400,19 @@ mod test {
         assert_eq!("17-i".parse::<Tile>(), Err(TileFromStrError::InvalidRow(17)));
         assert_eq!("i".parse::<Tile>(), Err(TileFromStrError::NoDash));
         assert_eq!("".parse::<Tile>(), Err(TileFromStrError::NoDash));
+    }
+
+    #[test]
+    fn stacked_boneyard() {
+        let mut boneyard = Boneyard::stacked(&[
+            "1-A".parse().unwrap(),
+            "2-A".parse().unwrap(),
+            "12-I".parse().unwrap(),
+            "4-B".parse().unwrap(),
+        ]);
+        assert_eq!(boneyard.remove(), Some(Tile::new(1, 'a')));
+        assert_eq!(boneyard.remove(), Some(Tile::new(2, 'a')));
+        assert_eq!(boneyard.remove(), Some(Tile::new(12, 'i')));
+        assert_eq!(boneyard.remove(), Some(Tile::new(4, 'b')));
     }
 }
