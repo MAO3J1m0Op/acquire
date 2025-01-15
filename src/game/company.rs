@@ -178,6 +178,11 @@ impl<T> CompanyMap<T> {
             f(Tower, array.next().unwrap().1),
         ]}
     }
+
+    pub fn zip<U, R, F: FnMut(Company, T, U) -> R>(self, other: CompanyMap<U>, mut f: F) -> CompanyMap<R> {
+        let mut other_array = other.into_iter();
+        self.map(|company, t| f(company, t, other_array.next().unwrap().1))
+    }
 }
 
 impl<T: Clone> CompanyMap<T> {
@@ -196,6 +201,30 @@ impl CompanyMap<bool> {
                 if available { Some(company) } else { None }
             })
             .collect()
+    }
+
+    pub fn collect_included(iter: impl IntoIterator<Item = Company>) -> Self {
+        let mut map = CompanyMap::new(&false);
+        for company in iter {
+            map[company] = true;
+        }
+        map
+    }
+
+    pub fn and(self, other: Self) -> Self {
+        self.zip(other, |_, a, b| a & b)
+    }
+
+    pub fn or(self, other: Self) -> Self {
+        self.zip(other, |_, a, b| a | b)
+    }
+
+    pub fn xor(self, other: Self) -> Self {
+        self.zip(other, |_, a, b| a ^ b)
+    }
+
+    pub fn not(self) -> Self {
+        self.map(|_, a| !a)
     }
 }
 
