@@ -168,18 +168,11 @@ pub const HAND_SIZE: usize = 6;
 
 /// Represents a player's hand of tiles.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct Hand {
-    tiles: [Option<Tile>; HAND_SIZE]
+pub struct Hand<T> {
+    tiles: [Option<T>; HAND_SIZE]
 }
 
-impl Hand {
-    /// Creates a new hand by drawing tiles from a [`Boneyard`]. If the boneyard
-    /// runs out of tiles before drawing all of the hand, [`Err`] with a
-    /// partially-filled [`Hand`] instance will be returned instead.
-    pub fn from_boneyard(boneyard: &mut Boneyard) -> Result<FullHand, Hand> {
-        let hand = Self { tiles: [(); HAND_SIZE].map(|()| boneyard.remove()) };
-        FullHand::try_from(hand).map_err(|_| hand)
-    }
+impl<T> Hand<T> {
 
     /// Checks if the hand is empty.
     pub fn is_empty(&self) -> bool {
@@ -199,18 +192,32 @@ impl Hand {
         self.tiles.iter().all(|t| t.is_some())
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Tile> {
+    pub fn tiles(&self) -> &[Option<T>; HAND_SIZE] {
+        &self.tiles
+    }
+
+    pub fn tiles_iter(&self) -> impl Iterator<Item = &T> {
         self.tiles.iter().filter_map(|t| t.as_ref())
     }
 
+    pub fn tiles_iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.tiles.iter_mut().filter_map(|t| t.as_mut())
+    }
+
+    pub fn map<U, F: FnMut(T) -> U>(self, mut f: F) -> Hand<U> {
+        Hand {tiles: self.tiles.map(|opt| opt.map(&mut f)) }
+    }
+}
+
+impl<T: PartialEq> Hand<T> {
     /// Attempts to swap a tile equivalent to the `old_tile` with the provided
     /// `new_tile`. If the hand has more than one `old_tile`, only one will be
     /// replaced. If the `old_tile` does not exist, the new tile will be
     /// returned rather than inserted.
     pub fn swap_tile(&mut self,
-            old_tile: Option<Tile>,
-            new_tile: Option<Tile>
-    ) -> Result<(), Option<Tile>> {
+            old_tile: Option<T>,
+            new_tile: Option<T>,
+    ) -> Result<(), Option<T>> {
         for tile in &mut self.tiles {
             if *tile == old_tile {
                 *tile = new_tile;
@@ -223,19 +230,31 @@ impl Hand {
     /// Inserts a tile into an empty slot in a player's hand. If there is no
     /// empty slot, the new tile will be returned rather than inserted.
     #[inline]
-    pub fn insert_tile(&mut self, new_tile: Tile) -> Result<(), Tile> {
+    pub fn insert_tile(&mut self, new_tile: T) -> Result<(), T> {
         self.swap_tile(None, Some(new_tile)).map_err(|e| e.unwrap())
     }
 
     /// Removes a tile from a player's hand. Returns `true` upon success, and
     /// `false` if the desired tile cannot be found in the hand.
     #[inline]
-    pub fn remove_tile(&mut self, tile: Tile) -> bool {
+    pub fn remove_tile(&mut self, tile: T) -> bool {
         self.swap_tile(Some(tile), None).is_ok()
     }
 }
 
-impl Serialize for Hand {
+pub type TileHand = Hand<Tile>;
+
+impl TileHand {
+    /// Creates a new hand by drawing tiles from a [`Boneyard`]. If the boneyard
+    /// runs out of tiles before drawing all of the hand, [`Err`] with a
+    /// partially-filled [`Hand`] instance will be returned instead.
+    pub fn from_boneyard(boneyard: &mut Boneyard) -> Result<FullHand, TileHand> {
+        let hand = Self { tiles: [(); HAND_SIZE].map(|()| boneyard.remove()) };
+        FullHand::try_from(hand).map_err(|_| hand)
+    }
+}
+
+impl Serialize for TileHand {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: serde::Serializer
@@ -244,7 +263,7 @@ impl Serialize for Hand {
     }
 }
 
-impl<'de> Deserialize<'de> for Hand {
+impl<'de> Deserialize<'de> for TileHand {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where
             D: serde::Deserializer<'de>
@@ -309,7 +328,7 @@ impl<'de> Deserialize<'de> for FullHand {
     }
 }
 
-impl From<FullHand> for Hand {
+impl From<FullHand> for TileHand {
     fn from(value: FullHand) -> Self {
         Self { tiles: value.tiles.map(|t| Some(t)) }
     }
@@ -317,10 +336,10 @@ impl From<FullHand> for Hand {
 
 /// Attempts to convert from a [`Hand`] to a [`FullHand`]. On failure, the
 /// number of tiles in the hand will be returned.
-impl TryFrom<Hand> for FullHand {
+impl TryFrom<TileHand> for FullHand {
     type Error = u8;
 
-    fn try_from(value: Hand) -> Result<Self, Self::Error> {
+    fn try_from(value: TileHand) -> Result<Self, Self::Error> {
         match value.is_full() {
             true => {
                 // All values are now guaranteed to be `Some`.
