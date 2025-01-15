@@ -3,7 +3,7 @@ use std::{io::{self, Stdout, Write}, fmt, rc::Rc, cell::RefCell};
 use termion::{raw::RawTerminal, event::Key, color::{Color, self}, cursor::HideCursor};
 use tokio::sync::mpsc;
 
-use super::panels::PanelDim;
+use super::panels::{PanelDim, PanelTooSmallError};
 
 /// Hidden behind a `RefCell` to control the terminal itself.
 struct TermControls {
@@ -143,21 +143,19 @@ impl TermPanel {
     /// in there isn't an attempt to shave off more columns than this panel
     /// has), returns panels for the left and right columns.
     pub fn shave_horiz(&mut self, off_left: u16, off_right: u16)
-        -> Option<(Self, Self)>
+        -> Result<(Self, Self), PanelTooSmallError>
     {
-        let option = self.dim.shave_horiz(off_left, off_right);
-        option.map(|(left, center, right)| {
-            self.dim = center;
-            let left = TermPanel {
-                controls: Rc::clone(&self.controls),
-                dim: left,
-            };
-            let right = TermPanel {
-                controls: Rc::clone(&self.controls),
-                dim: right,
-            };
-            (left, right)
-        })
+        let (left, center, right) = self.dim.shave_horiz(off_left, off_right)?;
+        self.dim = center;
+        let left = TermPanel {
+            controls: Rc::clone(&self.controls),
+            dim: left,
+        };
+        let right = TermPanel {
+            controls: Rc::clone(&self.controls),
+            dim: right,
+        };
+        Ok((left, right))
     }
 
     pub fn split_vert(self, weight: f64) -> (Self, Self) {
@@ -177,21 +175,19 @@ impl TermPanel {
     /// in there isn't an attempt to shave off more rows than this panel
     /// has), returns panels for the left and right rows.
     pub fn shave_vert(&mut self, off_top: u16, off_bottom: u16)
-        -> Option<(Self, Self)>
+        -> Result<(Self, Self), PanelTooSmallError>
     {
-        let option = self.dim.shave_vert(off_top, off_bottom);
-        option.map(|(top, center, bottom)| {
-            self.dim = center;
-            let left = TermPanel {
-                controls: Rc::clone(&self.controls),
-                dim: top,
-            };
-            let right = TermPanel {
-                controls: Rc::clone(&self.controls),
-                dim: bottom,
-            };
-            (left, right)
-        })
+        let (top, center, bottom) = self.dim.shave_vert(off_top, off_bottom)?;
+        self.dim = center;
+        let left = TermPanel {
+            controls: Rc::clone(&self.controls),
+            dim: top,
+        };
+        let right = TermPanel {
+            controls: Rc::clone(&self.controls),
+            dim: bottom,
+        };
+        Ok((left, right))
     }
 
     /// Reduces the size of this panel. This operation will fail unless the new

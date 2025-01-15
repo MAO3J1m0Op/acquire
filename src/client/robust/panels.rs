@@ -1,3 +1,6 @@
+use std::fmt;
+use thiserror::Error;
+
 /// Dimensions of a panel.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PanelDim {
@@ -32,7 +35,7 @@ impl PanelDim {
         left_padding: u16,
         middle_padding: u16,
         right_padding: u16
-    ) -> Option<((u16, u16), (u16, u16))> {
+    ) -> Result<((u16, u16), (u16, u16)), PanelTooSmallError> {
 
         debug_assert!(weight >= 0.0 && weight <= 1.0,
             "weight must be between 0 and 1, got {weight}"
@@ -41,7 +44,7 @@ impl PanelDim {
         let total_padding = left_padding + middle_padding + right_padding;
 
         if total_padding > segment.1 {
-            return None;
+            return Err(PanelTooSmallError);
         }
 
         let true_size = segment.1 - total_padding;
@@ -55,7 +58,7 @@ impl PanelDim {
             segment.0 + left_padding + sizes.0 + middle_padding
         );
 
-        Some(((posns.0, sizes.0), (posns.1, sizes.1)))
+        Ok(((posns.0, sizes.0), (posns.1, sizes.1)))
     }
 
     pub fn split_horiz(self, weight: f64) -> (Self, Self) {
@@ -78,10 +81,10 @@ impl PanelDim {
     }
 
     pub fn shave_horiz(self, off_left: u16, off_right: u16)
-        -> Option<(Self, Self, Self)>
+        -> Result<(Self, Self, Self), PanelTooSmallError>
     {
-        if off_left + off_right > self.size.0 { return None; };
-        Some((
+        if off_left + off_right > self.size.0 { return Err(PanelTooSmallError); };
+        Ok((
             Self {
                 top_left: self.top_left,
                 size: (off_left, self.size.1),
@@ -137,10 +140,19 @@ impl PanelDim {
         left_padding: u16,
         middle_padding: u16,
         right_padding: u16
-    ) -> Option<(Self, Self)> {
+    ) -> Result<(Self, Self), PanelTooSmallError> {
         let (left, right) = self.split_horiz(weight);
         let (_, left, _) = left.shave_horiz(left_padding, middle_padding)?;
         let (_, right, _) = right.shave_horiz(middle_padding, right_padding)?;
-        Some((left, right))
+        Ok((left, right))
+    }
+}
+
+#[derive(Debug, Error)]
+pub struct PanelTooSmallError;
+
+impl fmt::Display for PanelTooSmallError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "panel too small for desired operation")
     }
 }
