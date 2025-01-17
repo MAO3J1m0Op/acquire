@@ -167,7 +167,7 @@ pub enum TileFromStrError {
 pub const HAND_SIZE: usize = 6;
 
 /// Represents a player's hand of tiles.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Hand<T> {
     tiles: [Option<T>; HAND_SIZE]
 }
@@ -239,6 +239,12 @@ impl<T: PartialEq> Hand<T> {
     #[inline]
     pub fn remove_tile(&mut self, tile: T) -> bool {
         self.swap_tile(Some(tile), None).is_ok()
+    }
+}
+
+impl<T> Default for Hand<T> {
+    fn default() -> Self {
+        Self { tiles: Default::default() }
     }
 }
 

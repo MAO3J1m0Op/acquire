@@ -204,7 +204,7 @@ impl TilePanel {
 }
 
 /// A hand, annotated with information about the playability of each tile.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 struct AnnotatedHand {
     can_found_companies: bool,
     annotated_hand: Hand<AnnotatedHandEntry>,
