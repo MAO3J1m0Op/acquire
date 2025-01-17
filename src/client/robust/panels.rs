@@ -116,10 +116,10 @@ impl PanelDim {
     }
 
     pub fn shave_vert(self, off_top: u16, off_bottom: u16)
-        -> Option<(Self, Self, Self)>
+        -> Result<(Self, Self, Self), PanelTooSmallError>
     {
-        if off_top + off_bottom > self.size.1 { return None; };
-        Some((
+        if off_top + off_bottom > self.size.1 { return Err(PanelTooSmallError); };
+        Ok((
             Self {
                 top_left: self.top_left,
                 size: (self.size.0, off_top),
