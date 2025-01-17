@@ -1,4 +1,4 @@
-use crate::game::{messages::*, Company, tile::Hand};
+use crate::game::{messages::*, Company, tile::TileHand};
 use crate::game::kernel::{Game, self, GameDisambiguation};
 use crate::game::tile::Tile;
 use crate::server::Handshake;
@@ -142,7 +142,7 @@ pub struct ClientGame {
 
 struct ClientGameImpl {
     game: Game<kernel::Ambiguous>,
-    hand: Option<Hand>,
+    hand: Option<TileHand>,
 }
 
 impl ClientGame {
@@ -169,7 +169,7 @@ impl ClientGame {
     /// This function assumes that the server knows the
     /// state, and it will panic if the server requests to start a game when one
     /// is already in progress.
-    pub fn start(&mut self, game: Game<kernel::Ambiguous>, hand: Option<Hand>) {
+    pub fn start(&mut self, game: Game<kernel::Ambiguous>, hand: Option<TileHand>) {
         assert!(self._impl.as_ref().is_none(),
             "Server requested the start of a game when one is already in progress"
         );
@@ -272,11 +272,11 @@ impl ClientGame {
         self._impl.as_mut().map(|i| &mut i.game)
     }
 
-    pub fn hand(&self) -> Option<&Hand> {
+    pub fn hand(&self) -> Option<&TileHand> {
         self._impl.as_ref().map(|i| i.hand.as_ref()).flatten()
     }
 
-    pub fn hand_mut(&mut self) -> Option<&mut Hand> {
+    pub fn hand_mut(&mut self) -> Option<&mut TileHand> {
         self._impl.as_mut().map(|i| i.hand.as_mut()).flatten()
     }
 }

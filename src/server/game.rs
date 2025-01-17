@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use tokio::sync::broadcast;
 
 use crate::game::kernel::{self, Game, GameDisambiguation, GameUpdateResult};
-use crate::game::tile::{Tile, Boneyard, Hand};
+use crate::game::tile::{Tile, Boneyard, TileHand};
 use crate::game::messages::*;
 
 use super::{PrivateBroadcast, ServerBroadcast};
@@ -19,7 +19,7 @@ pub struct ServerGame {
 struct ServerGameImpl {
     boneyard: Boneyard,
     game: Game<kernel::Ambiguous>,
-    player_tiles: HashMap<Box<str>, Hand>,
+    player_tiles: HashMap<Box<str>, TileHand>,
     start: GameStart,
     action_history: Vec<TaggedPlayerAction>,
 }
@@ -84,14 +84,14 @@ impl ServerGame {
             .map(|(player, _)| {
                 (
                     player,
-                    Hand::from_boneyard(&mut boneyard).unwrap()
+                    TileHand::from_boneyard(&mut boneyard).unwrap()
                 )
             })
             .collect();
 
         // Make the HashMap to be sent
         let player_tiles: HashMap<_, _> = initial_hands.iter()
-            .map(|(k, v)| (k.clone(), Hand::from(*v)))
+            .map(|(k, v)| (k.clone(), TileHand::from(*v)))
             .collect();
 
         let game_start_info = GameStart {
