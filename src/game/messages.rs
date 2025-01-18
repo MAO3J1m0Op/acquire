@@ -7,6 +7,9 @@ use super::tile::{Tile, FullHand};
 
 use serde::{Serialize, Deserialize};
 
+mod merge;
+pub use merge::{Merge, MergeTie};
+
 /// Messages sent from the server to clients to dictate the happenings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
@@ -303,57 +306,6 @@ pub enum TilePlacementImplication {
     FoundsCompany(Company),
     /// The tile placement merges two or more companies.
     MergesCompanies(Merge),
-}
-
-/// Indicates a merger in progress.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Merge {
-    /// The smaller companies that are being removed from the board by the
-    /// merging process. The companies are ordered such that the defunct company
-    /// at position `0` is the last one to be resolved, so companies are ordered
-    /// largest to smallest.
-    defunct: [Option<Company>; 3],
-    /// The company into which the defunct company is merging.
-    pub into: Company,
-}
-
-impl Merge {
-
-    /// Creates a new merge that specifies that the list of `defunct` companies
-    /// will go `into` the provided company in the provided order.
-    pub fn new(defunct: &[Company], into: Company) -> Self {
-        assert!(defunct.len() > 0, "merge created with empty defunct");
-        assert!(defunct.len() <= 3,
-            "merge created with more than 3 defunct companies"
-        );
-        let mut defunct_arr = [None; 3];
-        for (i, &company) in defunct.iter().rev().enumerate() {
-            defunct_arr[i] = Some(company);
-        }
-
-        Merge { defunct: defunct_arr, into }
-    }
-
-    /// Iterates through defunct companies in the order that they will be resolved.
-    pub fn defunct(&self) -> impl Iterator<Item = Company> + '_ {
-        self.defunct.iter().filter_map(|opt| *opt).rev()
-    }
-
-    /// Removes a defunct company from the list, returning [`None`] if there are
-    /// no defunct companies left in the merge.
-    pub fn pop_defunct(&mut self) -> Option<Company> {
-        for i in (0..3).rev() {
-            if self.defunct[i].is_some() {
-                return Some(self.defunct[i].take().unwrap());
-            }
-        }
-
-        None
-    }
-
-    pub fn defunct_is_empty(&self) -> bool {
-        self.defunct.iter().all(|cmp| cmp.is_none())
-    }
 }
 
 /// Reason why the game ended.
