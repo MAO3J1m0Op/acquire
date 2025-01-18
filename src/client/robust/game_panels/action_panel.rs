@@ -5,8 +5,9 @@ use tile_panel::{TilePanel, TilePanelKeyProcessEvent};
 use crate::client::robust::panels::PanelTooSmallError;
 use crate::client::robust::terminal::{NiceFgColor, OverflowMode, TermWriteError};
 use crate::client::robust::terminal::TermPanel;
+use crate::game::board::{self, Board};
 use crate::game::{messages::*, Company, CompanyMap};
-use crate::game::tile::{Hand, Tile};
+use crate::game::tile::Tile;
 
 mod company_panel;
 mod stock_panel;
@@ -64,6 +65,22 @@ impl ActionPanel {
         self.state = Some(ActionState::ChoosingTile);
     }
 
+    fn request_found_company(&mut self, tile_placed: Tile, available_companies: CompanyMap<bool>) {
+        self.cancel_action();
+        self.company_panel.start_action(available_companies, false);
+        self.set_keystroke_demander(KeystrokeDemander::CompanyPanel);
+
+        self.state = Some(ActionState::FoundingCompany(tile_placed));
+    }
+
+    fn request_merge(&mut self, tile_placed: Tile, merge_tie: MergeTie) {
+        self.cancel_action();
+        self.company_panel.start_action(merge_tie.participants(), false);
+        self.set_keystroke_demander(KeystrokeDemander::CompanyPanel);
+
+        self.state = Some(ActionState::Merging(tile_placed, merge_tie));
+    }
+
     /// Sets the panel's action to buying stock.
     pub fn request_buy_stock(&mut self, available_companies: CompanyMap<bool>) {
         self.cancel_action();
@@ -104,12 +121,13 @@ impl ActionPanel {
 
     /// Processes a single key from the user. If that key completes the action,
     /// this function returns [`Some`] with the completed action.
-    pub fn process_key(&mut self, key: termion::event::Key) -> Option<ClientMessage> {
+    pub fn process_key(&mut self, key: termion::event::Key, board: &Board) -> Option<ClientMessage> {
         match self.keystroke_demander {
             KeystrokeDemander::CompanyPanel => {
                 match self.company_panel.process_key(key)? {
                     CompanyPanelKeyProcessEvent::EmittedCompany(company) => {
-                        self.process_company_emission(company)
+                        let action = self.process_company_emission(company, board)?;
+                        Some(ClientMessage::TakingTurn(action))
                     },
                     CompanyPanelKeyProcessEvent::MoveIndexBackward => {
 
@@ -161,7 +179,7 @@ impl ActionPanel {
             KeystrokeDemander::TilePanel => {
                 match self.tile_panel.process_key(key)? {
                     TilePanelKeyProcessEvent::TileChosen { chosen, cached_annotation } => {
-                        self.process_tile_event(chosen, cached_annotation)
+                        self.process_tile_event(chosen, cached_annotation, board)
                     },
                     TilePanelKeyProcessEvent::ExitUpward => {
                         if matches!(self.state, Some(ActionState::BuyingStock)) {
@@ -186,13 +204,128 @@ impl ActionPanel {
     }
 
     /// The tile panel emits a tile.
-    fn process_tile_event(&mut self, tile: Tile, cached_annotation: Option<IncorrectImplication>) -> Option<ClientMessage> {
-        todo!()
+    fn process_tile_event(&mut self,
+        tile: Tile,
+        cached_annotation: Option<IncorrectImplication>,
+        board: &Board,
+    ) -> Option<ClientMessage> {
+
+        // Dead tiles can be exchanged regardless of whether it is your turn
+        if cached_annotation == Some(IncorrectImplication::DeadTile) {
+            return Some(ClientMessage::DeadTile { dead_tile: tile });
+        }
+
+        // The tile panel is always on display, so any action state is possible.
+        if let Some(ActionState::ChoosingTile) = &self.state {
+            let emitted_message = match cached_annotation {
+                Some(IncorrectImplication::BadDefunctOrder) => {
+                    panic!("not stored in AnnotatedHandEntry")
+                },
+                Some(IncorrectImplication::CompanyTaken) => {
+                    panic!("not stored in AnnotatedHandEntry")
+                },
+                Some(IncorrectImplication::DeadTile) => {
+                    panic!("case handled earlier")
+                },
+                Some(IncorrectImplication::IncorrectDefunct(_)) => {
+                    panic!("not stored in AnnotatedHandEntry")
+                },
+                Some(IncorrectImplication::LargeIntoSmall) => {
+                    panic!("not stored in AnnotatedHandEntry")
+                },
+                Some(IncorrectImplication::MissedDefunct(_)) => {
+                    panic!("not stored in AnnotatedHandEntry")
+                },
+                Some(IncorrectImplication::ShouldBeNone) => {
+                    panic!("not stored in AnnotatedHandEntry")
+                },
+                Some(IncorrectImplication::ShouldFoundCompany) => {
+                    self.request_found_company(tile, board.available_companies());
+                    None
+                },
+                Some(IncorrectImplication::ShouldMerge) => {
+                    let participants = board.merge_participants(tile);
+                    match Merge::make_merge(participants, board.company_sizes) {
+                        Ok(merge) => {
+                            self.cancel_action();
+                            Some(ClientMessage::TakingTurn(
+                                PlayerAction::PlayTile {
+                                    placement: TilePlacement {
+                                        tile,
+                                        implication: Some(TilePlacementImplication::MergesCompanies(merge))
+                                    }
+                                }
+                            ))
+                        },
+                        Err(merge_tie) => {
+                            self.request_merge(tile, merge_tie);
+                            None
+                        },
+                    }
+                }
+                None => todo!(),
+            };
+
+            return emitted_message;
+        }
+
+        None
     }
 
     /// The company panel emits a company
-    fn process_company_emission(&mut self, company: Option<Company>) -> Option<ClientMessage> {
-        todo!()
+    fn process_company_emission(&mut self, company: Option<Company>, board: &Board) -> Option<PlayerAction> {
+        // Unwrap: we shouldn't have a None state if we're emitting a company
+        match self.state.take().unwrap() {
+            ActionState::ChoosingTile => {
+                panic!("company panel shouldn't be active");
+            },
+            ActionState::BuyingStock => {
+
+                self.stock_panel.set_current_index(company);
+
+                if !self.stock_panel.move_index_forward() {
+                    let stock = *self.stock_panel.stock();
+                    self.cancel_action();
+                    Some(PlayerAction::BuyStock { stock })
+                }
+
+                // If the index push was successful, we haven't moved all the way right yet
+                else {
+
+                    // We called take() on state earlier, so we have to reset it
+                    self.state = Some(ActionState::BuyingStock);
+
+                    None
+                }
+            },
+            ActionState::FoundingCompany(_) => {
+                panic!("company panel shouldn't be active");
+            },
+            ActionState::Merging(tile, merge_tie) => {
+                // Unwrap: merge state disallows None in the company panel
+                let company = company.unwrap();
+                match merge_tie.advance(company, board.company_sizes) {
+                    Ok(merge) => {
+                        let action = PlayerAction::PlayTile {
+                            placement: TilePlacement {
+                                tile,
+                                implication: Some(TilePlacementImplication::MergesCompanies(merge)),
+                            },
+                        };
+                        // Emit the merge
+                        Some(action)
+                    },
+                    Err(tie) => {
+                        // Set the state with the new tie
+                        self.state = Some(ActionState::Merging(tile, tie));
+                        None
+                    },
+                }
+            },
+            ActionState::ResolvingMergeStock => {
+                panic!("company panel shouldn't be active");
+            },
+        }
     }
 }
 
@@ -206,7 +339,7 @@ enum ActionState {
     /// Player is choosing a company to found.
     FoundingCompany(Tile),
     /// Player is working on breaking ties in a merge.
-    Merging(Tile, ()),
+    Merging(Tile, MergeTie),
     /// Player is choosing what to do with their stock tied up in a merger.
     ResolvingMergeStock,
 }

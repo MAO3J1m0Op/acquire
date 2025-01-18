@@ -228,6 +228,25 @@ impl MergeTie {
         }
     }
 
+    /// Returns a [`CompanyMap`] marking all the participants in the chosen tie.
+    pub fn participants(&self) -> CompanyMap<bool> {
+        match &self.tie {
+            MergeTieImpl::Prevailing { candidates, other_participants: _ } => {
+                *candidates
+            },
+            MergeTieImpl::Defunct { prevailing: _, tie } => {
+                match tie {
+                    MergeDefunctTie::TwoWay { tied_companies, third_defunct: _, third_defunct_larger: _ } => {
+                        CompanyMap::collect_included(tied_companies.iter().copied())
+                    },
+                    MergeDefunctTie::ThreeWay { tie } => {
+                        CompanyMap::collect_included(tie.iter().copied())
+                    },
+                }
+            },
+        }
+    }
+
     /// Advances the tie by supplying a company chosen by the player to break
     /// the tie.
     /// * In a prevailing tie, the company chosen will become the prevailing

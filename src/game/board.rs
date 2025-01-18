@@ -352,6 +352,31 @@ impl Board {
             Company::Luxor | Company::Tower => base_price,
         }
     }
+
+    /// Returns a [`CompanyMap`] containing all the companies that are available
+    /// for founding.
+    pub fn available_companies(&self) -> CompanyMap<bool> {
+        CompanyMap::new(&()).map(|company, _| self.company_exists(company))
+    }
+
+    /// Returns a list of all the neighbors of a company that would be included
+    /// were a merge to happen there. Note that a merge can only happen if there
+    /// are 2 or more `true` entries in the map.
+    pub fn merge_participants(&self, tile: Tile) -> CompanyMap<bool> {
+        let mut map = CompanyMap::new(&false);
+
+        if let Some(Some(company_of_tile)) = self[tile] {
+            map[company_of_tile] = true;
+        };
+
+        self.for_each_neighbor(tile, |neighbor| {
+            if let Some(Some(neighbor_company)) = self[neighbor] {
+                map[neighbor_company] = true;
+            }
+        });
+
+        map
+    }
 }
 
 impl TermRender for Board {
