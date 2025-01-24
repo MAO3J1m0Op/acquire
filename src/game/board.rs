@@ -9,7 +9,7 @@ use super::{Company, CompanyMap};
 
 /// Contains all the common knowledge pertaining to the game board. This struct
 /// is intended for use by both the client and the server.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Board {
     /// Arranged in ascending order by number, with the letter breaking ties.
     /// [`None`] represents an empty cell, [`Some(None)`] represents a cell not
