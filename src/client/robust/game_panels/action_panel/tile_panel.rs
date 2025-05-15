@@ -1,8 +1,8 @@
 use termion::event::Key;
 
-use crate::game::{board::Board, tile::{Hand, Tile, TileHand, HAND_SIZE}};
+use crate::{client::robust::terminal::TermPanelUpdate, game::{board::Board, tile::{Hand, Tile, TileHand, HAND_SIZE}}};
 use crate::client::robust::panels::{PanelDim, PanelTooSmallError};
-use crate::client::robust::terminal::{NiceFgColor, OverflowMode, TermPanel, TermWriter};
+use crate::client::robust::terminal::{NiceFgColor, OverflowMode, TermPanelCache, TermWriter};
 
 use super::{IncorrectImplication, TextPanel, TilePlacement};
 
@@ -11,7 +11,7 @@ use super::{IncorrectImplication, TextPanel, TilePlacement};
 /// the game, so it stores a cache of the hand it's been told we have.
 #[derive(Debug)]
 pub struct TilePanel {
-    tile_panel: TermPanel,
+    tile_panel: TermPanelCache,
     /// Stored even if this panel is inactive to preserve the column.
     highlighted_index: usize,
     /// Indicates whether the user is hovering over this panel (for rendering
@@ -36,17 +36,17 @@ pub enum TilePanelKeyProcessEvent {
 
 impl TilePanel {
 
-    fn cut_panels(mut panel: TermPanel) -> Result<(TermPanel, TermPanel), PanelTooSmallError> {
+    fn cut_panels<'c>(mut panel: TermPanelUpdate<'c>) -> Result<(TermPanelUpdate<'c>, TermPanelUpdate<'c>), PanelTooSmallError> {
         let (_, desc) = panel.shave_vert(0, 2)?;
         Ok((panel, desc))
     }
 
-    pub fn new(panel: TermPanel) -> Result<Self, PanelTooSmallError> {
+    pub fn new(panel: TermPanelUpdate) -> Result<Self, PanelTooSmallError> {
         let tile_layout = TileLayout::decide(panel.dim())?;
         let (main, desc) = Self::cut_panels(panel)?;
 
         let mut me = Self {
-            tile_panel: main,
+            tile_panel: main.into(),
             desc_panel: TextPanel::new(desc),
             layout: tile_layout,
             hand_cache: AnnotatedHand::default(),
@@ -57,11 +57,11 @@ impl TilePanel {
         Ok(me)
     }
 
-    pub fn resize(&mut self, new_panel: TermPanel) -> Result<(), PanelTooSmallError> {
+    pub fn resize(&mut self, new_panel: TermPanelUpdate) -> Result<(), PanelTooSmallError> {
         let tile_layout = TileLayout::decide(new_panel.dim())?;
         let (main, desc) = Self::cut_panels(new_panel)?;
         self.desc_panel = TextPanel::new(desc);
-        self.tile_panel = main;
+        self.tile_panel = main.into();
         self.layout = tile_layout;
         self.rerender();
         Ok(())

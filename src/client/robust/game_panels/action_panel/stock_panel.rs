@@ -1,12 +1,12 @@
 use termion::event::Key;
 
-use crate::{client::robust::terminal::{OverflowMode, TermPanel}, game::Company};
+use crate::{client::robust::terminal::{OverflowMode, TermPanelCache, TermPanelUpdate}, game::Company};
 
 /// Stores the display (if any) that guides the player through choosing a
 /// founding company or buying stock.
 #[derive(Debug)]
 pub struct StockPanel {
-    panel: TermPanel,
+    panel: TermPanelCache,
     /// Stores which action is in progress, if any.
     stock: [Option<Company>; 3],
     /// The index hovered over by the player. [`None`] indicates that this panel is inactive.
@@ -28,9 +28,9 @@ pub enum StockPanelKeyProcessEvent {
 }
 
 impl StockPanel {
-    pub fn new(panel: TermPanel) -> Self {
+    pub fn new(panel: TermPanelUpdate) -> Self {
         let mut me = Self {
-            panel,
+            panel: panel.into(),
             stock: [None; 3],
             highlighted_index: None,
             highlighted: false,
@@ -39,8 +39,8 @@ impl StockPanel {
         me
     }
 
-    pub fn resize(&mut self, new_panel: TermPanel) {
-        self.panel = new_panel;
+    pub fn resize(&mut self, new_panel: TermPanelUpdate) {
+        self.panel.update(new_panel);
         self.render();
     }
 

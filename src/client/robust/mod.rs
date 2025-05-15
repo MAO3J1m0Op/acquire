@@ -3,10 +3,9 @@ use std::io;
 use crate::game::{messages::*, CompanyMap};
 use crate::server::{ConnectionManager, NewConnection};
 
-use self::game_panels::GamePanels;
 use self::chat_panel::ChatPanel;
 use self::command_buffer::CommandBuffer;
-use self::terminal::{TermPanel, OverflowMode, TermWriteError};
+use self::terminal::{TermPanelCache, OverflowMode, TermWriteError};
 
 /// The chat panel is responsible for printing chat and in-game messages.
 mod chat_panel;
@@ -17,6 +16,9 @@ mod game_panels;
 pub mod terminal;
 mod panels;
 
+use game_panels::{ActionPanel, BoardLobbyPanel};
+use panels::PanelTooSmallError;
+use terminal::{setup_terminal, TermPanelUpdate};
 use termion::event::Key;
 
 use super::{CommandParseErr, parse_game_command, parse_admin_command, ClientGame};
@@ -37,7 +39,7 @@ pub async fn run<E>(mut connection: NewConnection<E>) -> io::Result<Result<(), E
 
     dbg!("terminal making");
 
-    let (term, mut keys) = TermPanel::new()?;
+    let (term, mut keys) = setup_terminal()?;
 
     dbg!("terminal made");
 
@@ -51,14 +53,12 @@ pub async fn run<E>(mut connection: NewConnection<E>) -> io::Result<Result<(), E
         connection.handshake,
         connection.server_state.game_history
     );
-    let connections = &mut connection.server_state.connections;
-
-    let mut panels = ClientPanels::new(term, game, connections)?;
-
-    panels.rerender_panels();
+    let mut panels = ClientPanels::new((&term).into(), game, connection.server_state.connections)
+        // TODO: handle PanelTooSmallError
+        .unwrap();
 
     loop {
-        let msg = tokio::select! {
+        let msg: Option<ClientMessage> = tokio::select! {
             key = keys.recv() => {
                 let key = match key {
                     Some(v) => v,
@@ -66,17 +66,20 @@ pub async fn run<E>(mut connection: NewConnection<E>) -> io::Result<Result<(), E
                 };
 
                 match panels.process_key(key)? {
-                    Some(option) => option,
-                    None => break,
+                    ClientPanelKeyProcessResult::Exit => break,
+                    ClientPanelKeyProcessResult::Continue => None,
+                    ClientPanelKeyProcessResult::SendMessage(client_message) => Some(client_message),
                 }
             },
             msg = connection.interface.recv() => {
+                // If receiver is closed, break
                 let msg = match msg {
                     Some(v) => v,
                     None => break,
                 };
                 let msg = match msg {
                     Ok(v) => v,
+                    // Exit client; report error from interface
                     Err(e) => return Ok(Err(e)),
                 };
 
@@ -96,9 +99,12 @@ pub async fn run<E>(mut connection: NewConnection<E>) -> io::Result<Result<(), E
     Ok(connection.interface.close().await)
 }
 
-struct ClientPanels<'c> {
+struct ClientPanels {
+    game: ClientGame,
+    connections: ConnectionManager,
     command_buf: CommandBuffer,
-    game_panel: GamePanels<'c>,
+    action_panel: ActionPanel,
+    board_panel: BoardLobbyPanel,
     chat_panel: ChatPanel,
     keystroke_demander: KeystrokeDemander,
 }
@@ -109,28 +115,43 @@ enum KeystrokeDemander {
     Exiting,
 }
 
-impl<'c> ClientPanels<'c> {
+enum ClientPanelKeyProcessResult {
+    /// The player wishes to exit
+    Exit,
+    /// Continue running; nothing special happens
+    Continue,
+    /// Server should continue running and send a [`ClientMessage`].
+    SendMessage(ClientMessage),
+}
+
+impl ClientPanelKeyProcessResult {
+    fn maybe_emit(value: Option<ClientMessage>) -> Self {
+        match value {
+            Some(msg) => Self::SendMessage(msg),
+            None => Self::Continue,
+        }
+    }
+}
+
+impl ClientPanels {
 
     pub fn new(
-        panel: TermPanel,
+        panel: TermPanelUpdate,
         game: ClientGame,
-        connection_manager: &'c mut ConnectionManager,
-    ) -> io::Result<Self> {
-        // Create the panels with zero size
-        let mut me = Self {
-            command_buf: CommandBuffer::new(),
-            game_panel: GamePanels::new(
-                game,
-                connection_manager
-            ),
-            chat_panel: ChatPanel::new(),
+        connection_manager: ConnectionManager,
+    ) -> Result<Self, PanelTooSmallError> {
+
+        let split = PanelSplit::new(panel)?;
+
+        Ok(Self {
             keystroke_demander: KeystrokeDemander::ActionPanel,
-        };
-
-        // ...then size and render accordingly
-        me.resize(panel)?;
-
-        Ok(me)
+            game,
+            connections: connection_manager,
+            command_buf: CommandBuffer::new(split.command_buf),
+            action_panel: ActionPanel::new(split.action_panel)?,
+            board_panel: BoardLobbyPanel::new(split.board_panel),
+            chat_panel: ChatPanel::new(split.chat_panel),
+        })
     }
 
     /// Writes an error message onto the client.
@@ -141,15 +162,9 @@ impl<'c> ClientPanels<'c> {
         self.command_buf.write_error(error)
     }
 
-    /// Returns a client message that may have been produced.
-    /// # Return value
-    ///
-    /// * `Err(...)` indicates an I/O error.
-    /// * `Ok(None)` indicates that the player wishes to exit.
-    /// * `Ok(Some(None))` indicates that the server should continue, but no
-    ///   client message needs to be sent.
-    /// * `Ok(Some(Some(...)))` indicates a client message should be sent.
-    fn process_key(&mut self, key: Key) -> io::Result<Option<Option<ClientMessage>>> {
+    fn process_key(&mut self, key: Key) -> io::Result<ClientPanelKeyProcessResult> {
+
+        use ClientPanelKeyProcessResult::*;
 
         // Decide which panel gets the key
         match &self.keystroke_demander {
@@ -167,17 +182,22 @@ impl<'c> ClientPanels<'c> {
                         self.keystroke_demander = KeystrokeDemander::Exiting;
                     }
                     _ => {
-                        let msg = match self.game_panel.process_key(key) {
-                            Some(Ok(msg)) => Some(msg),
-                            Some(Err(why)) => {
-                                self.write_error(&why).unwrap();
-                                None
-                            }
-                            None => None,
-                        };
-                        let msg = msg.map(|m| ClientMessage::TakingTurn(m));
 
-                        return Ok(Some(msg));
+                        // Get the board. If no game is in progress, the action
+                        // panel is assumed to be empty.
+                        let board = self.game.game().map(|g| g.board());
+
+                        if let Some(board) = board {
+                            let msg = match self.action_panel.process_key(key, board) {
+                                Ok(Some(msg)) => Some(msg),
+                                Err(why) => {
+                                    self.write_error(&why).unwrap();
+                                    None
+                                }
+                                Ok(None) => None,
+                            };
+                            return Ok(ClientPanelKeyProcessResult::maybe_emit(msg));
+                        }
                     }
                 }
             },
@@ -202,12 +222,11 @@ impl<'c> ClientPanels<'c> {
                     self.keystroke_demander = KeystrokeDemander::ActionPanel;
                 }
 
-                return Ok(Some(msg));
+                return Ok(ClientPanelKeyProcessResult::maybe_emit(msg));
             },
             KeystrokeDemander::Exiting => {
                 if key == Key::Char('y') {
-                    // Exit
-                    return Ok(None);
+                    return Ok(Exit);
                 } else {
                     // Stop trying to exit
                     self.write_error("").unwrap();
@@ -216,7 +235,7 @@ impl<'c> ClientPanels<'c> {
             }
         }
 
-        Ok(Some(None))
+        Ok(Continue)
     }
 
     /// # Return value
@@ -243,16 +262,12 @@ impl<'c> ClientPanels<'c> {
                 self.chat_panel.add_message(chat.into_boxed_str());
 
                 // Connect the player
-                self.game_panel.connections_mut(
-                    |connections| connections.connect(handshake).unwrap()
-                );
+                self.connections.connect(handshake).unwrap();
             },
             ServerMessage::Quit { handshake } => {
 
                 // Disconnect the player
-                self.game_panel.connections_mut(
-                    |connections| assert!(connections.disconnect(&handshake.player_name))
-                );
+                assert!(self.connections.disconnect(&handshake.player_name));
 
                 let chat = format!("JOIN: {} left the game.", &handshake.player_name);
                 self.chat_panel.add_message(chat.into_boxed_str());
@@ -261,7 +276,7 @@ impl<'c> ClientPanels<'c> {
                 self.chat_panel.add_message(
                     action.to_string().into_boxed_str()
                 );
-                self.game_panel.update_game(&action);
+                self.game.update(&action);
 
                 // EDGE CASE: if the action panel is trying to produce an action
                 // but the player uses the command buffer to send the action
@@ -363,21 +378,59 @@ impl<'c> ClientPanels<'c> {
 
     /// Call this function any time the size of the terminal changes. This
     /// resizes each sub-panel and re-renders everything.
-    fn resize(&mut self, mut new_panel: TermPanel) -> io::Result<()> {
+    fn resize(&mut self, new_panel: TermPanelCache) -> Result<(), PanelTooSmallError> {
+
+        let split = PanelSplit::new(new_panel)?;
+
+        self.action_panel.resize(split.action_panel)?;
+        self.board_panel = BoardLobbyPanel::new(split.board_panel);
+        self.chat_panel.resize(split.chat_panel);
+        self.command_buf.resize(split.command_buf);
+
+        Ok(())
+    }
+}
+
+struct PanelSplit<'c> {
+    pub action_panel: TermPanelUpdate<'c>,
+    pub board_panel: TermPanelUpdate<'c>,
+    pub command_buf: TermPanelUpdate<'c>,
+    pub chat_panel: TermPanelUpdate<'c>,
+    _private_constructor: (),
+}
+
+impl<'c> PanelSplit<'c> {
+    /// Creates a new panel split and prints the ASCII border around the panels
+    pub fn new(mut panel: TermPanelUpdate<'c>) -> Result<Self, PanelTooSmallError> {
+
         // Create the panels for the borders
-        let (mut top_border, mut bottom_border) = new_panel.shave_vert(1, 1).unwrap();
-        let (mut left_border, mut right_border) = new_panel.shave_horiz(2, 2).unwrap();
+        let (top_border, bottom_border) = panel.shave_vert(1, 1)?;
+        let (left_border, right_border) = panel.shave_horiz(2, 2)?;
 
         // Split the panel in two, generate the middle padding
-        let (mut left, right) = new_panel.split_horiz(0.5);
-        let (_, mut middle_border) = left.shave_horiz(0, 1).unwrap();
+        let (mut left, right) = panel.split_horiz(0.5);
+        let (_, middle_border) = left.shave_horiz(0, 1)?;
 
         // Split the right panel into chat and cmd
-        let mut chat = right;
-        let (_, mut cmd) = chat.shave_vert(0, 2).unwrap();
-        let (mut chat_cmd_border, _) = cmd.shave_vert(1, 0).unwrap();
+        let mut chat_panel = right;
+        let (_, mut command_buf) = chat_panel.shave_vert(0, 2)?;
+        let (chat_cmd_border, _) = command_buf.shave_vert(1, 0)?;
+
+        // The left panel are the game panels. Decide which axis to split on
+        let (board_panel, action_panel) = if left.dim().size.0 < left.dim().size.1 {
+            left.split_horiz(0.5)
+        } else {
+            left.split_vert(0.5)
+        };
 
         // Print into the border panels
+        // Unwrap: all of these are valid ASCII characters
+        let mut top_border = TermPanelCache::from(top_border);
+        let mut bottom_border = TermPanelCache::from(bottom_border);
+        let mut left_border = TermPanelCache::from(left_border);
+        let mut middle_border = TermPanelCache::from(middle_border);
+        let mut right_border = TermPanelCache::from(right_border);
+        let mut chat_cmd_border = TermPanelCache::from(chat_cmd_border);
         top_border.fill('=').unwrap();
         bottom_border.fill('=').unwrap();
         left_border.fill('|').unwrap();
@@ -388,17 +441,13 @@ impl<'c> ClientPanels<'c> {
             while writer.can_write_char() { writer.write_char('-').unwrap(); }
         });
 
-        self.chat_panel.resize(chat);
-        self.game_panel.resize(left);
-        self.command_buf.resize(cmd);
-
-        Ok(())
-    }
-
-    pub fn rerender_panels(&mut self) {
-        self.game_panel.render();
-        self.chat_panel.render();
-        self.command_buf.render();
+        Ok(Self {
+            action_panel,
+            board_panel,
+            command_buf,
+            chat_panel,
+            _private_constructor: (),
+        })
     }
 }
 

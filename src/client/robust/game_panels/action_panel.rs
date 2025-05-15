@@ -3,9 +3,9 @@ use stock_panel::{StockPanel, StockPanelKeyProcessEvent};
 use tile_panel::{TilePanel, TilePanelKeyProcessEvent};
 
 use crate::client::robust::panels::PanelTooSmallError;
-use crate::client::robust::terminal::{NiceFgColor, OverflowMode, TermWriteError};
-use crate::client::robust::terminal::TermPanel;
-use crate::game::board::{self, Board};
+use crate::client::robust::terminal::{NiceFgColor, OverflowMode, TermPanelUpdate, TermWriteError};
+use crate::client::robust::terminal::TermPanelCache;
+use crate::game::board::Board;
 use crate::game::{messages::*, Company, CompanyMap};
 use crate::game::tile::Tile;
 
@@ -26,7 +26,7 @@ pub struct ActionPanel {
 impl ActionPanel {
 
     /// Creates and renders a new action panel.
-    pub fn new(panel: TermPanel) -> Result<Self, PanelTooSmallError> {
+    pub fn new(panel: TermPanelUpdate) -> Result<Self, PanelTooSmallError> {
 
         let split = PanelSplit::new(panel)?;
 
@@ -40,7 +40,7 @@ impl ActionPanel {
     }
 
     /// Resizes and renders the panel.
-    pub fn resize(&mut self, new_panel: TermPanel) -> Result<(), PanelTooSmallError> {
+    pub fn resize(&mut self, new_panel: TermPanelUpdate) -> Result<(), PanelTooSmallError> {
         let split = PanelSplit::new(new_panel)?;
         let _cp_res = self.company_panel.resize(split.company_panel);
         let _sp_res = self.company_panel.resize(split.stock_panel);
@@ -121,13 +121,19 @@ impl ActionPanel {
 
     /// Processes a single key from the user. If that key completes the action,
     /// this function returns [`Some`] with the completed action.
-    pub fn process_key(&mut self, key: termion::event::Key, board: &Board) -> Option<ClientMessage> {
+    pub fn process_key(&mut self, key: termion::event::Key, board: &Board) -> Result<Option<ClientMessage>, Box<str>> {
         match self.keystroke_demander {
             KeystrokeDemander::CompanyPanel => {
-                match self.company_panel.process_key(key)? {
+                let Some(result) = self.company_panel.process_key(key) else {
+                    return Ok(None);
+                };
+                match result {
                     CompanyPanelKeyProcessEvent::EmittedCompany(company) => {
-                        let action = self.process_company_emission(company, board)?;
-                        Some(ClientMessage::TakingTurn(action))
+                        let action = self.process_company_emission(company, board);
+                        let Some(action) = action else {
+                            return Ok(None);
+                        };
+                        Ok(Some(ClientMessage::TakingTurn(action)))
                     },
                     CompanyPanelKeyProcessEvent::MoveIndexBackward => {
 
@@ -140,11 +146,11 @@ impl ActionPanel {
                             self.company_panel.cycle_to_company(company).unwrap();
                         }
 
-                        None
+                        Ok(None)
                     },
                     CompanyPanelKeyProcessEvent::ExitUpward => {
                         // There's never a panel above the company panel
-                        None
+                        Ok(None)
                     },
                     CompanyPanelKeyProcessEvent::ExitDownward => {
                         if matches!(self.state, Some(ActionState::BuyingStock)) {
@@ -152,34 +158,40 @@ impl ActionPanel {
                         } else {
                             self.set_keystroke_demander(KeystrokeDemander::TilePanel);
                         }
-                        None
+                        Ok(None)
                     },
                 }
             },
             KeystrokeDemander::StockPanel => {
-                match self.stock_panel.process_key(key)? {
+                let Some(result) = self.stock_panel.process_key(key) else {
+                    return Ok(None);
+                };
+                match result {
                     StockPanelKeyProcessEvent::ExitUpward => {
                         // The company panel is always above the stock panel
                         self.set_keystroke_demander(KeystrokeDemander::CompanyPanel);
-                        None
+                        Ok(None)
                     },
                     StockPanelKeyProcessEvent::ExitDownward => {
                         // The tile panel is always below the stock panel
                         self.set_keystroke_demander(KeystrokeDemander::TilePanel);
-                        None
+                        Ok(None)
                     },
                     StockPanelKeyProcessEvent::CycleToCompany(company) => {
                         // Unwrap: we assert the stock panel is only storing
                         // companies available to the company panel
                         self.company_panel.cycle_to_company(company).unwrap();
-                        None
+                        Ok(None)
                     },
                 }
             },
             KeystrokeDemander::TilePanel => {
-                match self.tile_panel.process_key(key)? {
+                let Some(result) = self.tile_panel.process_key(key) else {
+                    return Ok(None);
+                };
+                match result {
                     TilePanelKeyProcessEvent::TileChosen { chosen, cached_annotation } => {
-                        self.process_tile_event(chosen, cached_annotation, board)
+                        Ok(self.process_tile_event(chosen, cached_annotation, board))
                     },
                     TilePanelKeyProcessEvent::ExitUpward => {
                         if matches!(self.state, Some(ActionState::BuyingStock)) {
@@ -192,11 +204,11 @@ impl ActionPanel {
                             todo!();
                         }
 
-                        None
+                        Ok(None)
                     },
                     TilePanelKeyProcessEvent::ExitDownward => {
                         // Do nothing; there is never a panel below the tile panel
-                        None
+                        Ok(None)
                     },
                 }
             },
@@ -355,15 +367,15 @@ enum KeystrokeDemander {
 
 /// Splits the provided [`TermPanel`] for this action panel into sub-panels.
 #[derive(Debug)]
-struct PanelSplit {
-    pub company_panel: TermPanel,
-    pub stock_panel: TermPanel,
-    pub tile_panel: TermPanel,
+struct PanelSplit<'c> {
+    pub company_panel: TermPanelUpdate<'c>,
+    pub stock_panel: TermPanelUpdate<'c>,
+    pub tile_panel: TermPanelUpdate<'c>,
     _private_constructor: (),
 }
 
-impl PanelSplit {
-    pub fn new(panel: TermPanel) -> Result<Self, PanelTooSmallError> {
+impl<'c> PanelSplit<'c> {
+    pub fn new(panel: TermPanelUpdate<'c>) -> Result<Self, PanelTooSmallError> {
 
 
         Ok(Self {
@@ -377,12 +389,12 @@ impl PanelSplit {
 
 #[derive(Debug)]
 struct TextPanel {
-    panel: TermPanel,
+    panel: TermPanelCache,
 }
 
 impl TextPanel {
-    pub fn new(panel: TermPanel) -> Self {
-        Self { panel }
+    pub fn new(panel: TermPanelUpdate) -> Self {
+        Self { panel: panel.into() }
     }
 
     pub fn display_text(&mut self, text: &str, color: impl NiceFgColor) -> Result<(), TermWriteError> {

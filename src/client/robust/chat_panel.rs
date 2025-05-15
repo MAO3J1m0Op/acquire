@@ -1,17 +1,17 @@
-use super::terminal::{TermPanel, OverflowMode};
+use super::terminal::{OverflowMode, TermPanelCache, TermPanelUpdate};
 
 #[derive(Debug)]
-pub(super) struct ChatPanel {
-    panel: Option<TermPanel>,
+pub struct ChatPanel {
+    panel: TermPanelCache,
     buffer: Vec<Box<str>>,
 }
 
 impl ChatPanel {
     /// Constructs a new [`ChatPanel`] with no panel. To begin rendering, call
     /// the [`resize`] function.
-    pub fn new() -> Self {
+    pub fn new(panel: TermPanelUpdate) -> Self {
         Self {
-            panel: None,
+            panel: panel.into(),
             buffer: Vec::new(),
         }
     }
@@ -22,21 +22,18 @@ impl ChatPanel {
         self.render();
     }
 
-    pub fn render(&mut self) {
-
-        if let Some(panel) = &mut self.panel {
-            panel.clear();
-            panel.write(OverflowMode::Wrap, |writer| {
-                for msg in self.buffer.iter().rev() {
-                    writer.write_str(&*msg).unwrap();
-                    writer.new_line();
-                }
-            });
-        }
+    fn render(&mut self) {
+        self.panel.clear();
+        self.panel.write(OverflowMode::Wrap, |writer| {
+            for msg in self.buffer.iter().rev() {
+                writer.write_str(&*msg).unwrap();
+                writer.new_line();
+            }
+        });
     }
 
-    pub fn resize(&mut self, new_panel: TermPanel) {
-        self.panel = Some(new_panel);
+    pub fn resize(&mut self, new_panel: TermPanelUpdate) {
+        self.panel.update(new_panel);
         self.render();
     }
 }

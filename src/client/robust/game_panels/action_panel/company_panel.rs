@@ -3,13 +3,13 @@ use std::fmt;
 use termion::event::Key;
 use thiserror::Error;
 
-use crate::{client::robust::terminal::{OverflowMode, TermPanel, TermWriter}, game::{Company, CompanyMap}};
+use crate::{client::robust::terminal::{OverflowMode, TermPanelCache, TermPanelUpdate, TermWriter}, game::{Company, CompanyMap}};
 
 /// Stores the display (if any) that guides the player through choosing a
 /// founding company or buying stock.
 #[derive(Debug)]
 pub struct CompanyPanel {
-    panel: TermPanel,
+    panel: TermPanelCache,
     /// The company chooser, if one exists. Set to [`None`] if the panel should be empty.
     chooser: Option<CompanyChooser>,
     /// True if the user is hovering over anything in this panel (for rendering
@@ -42,9 +42,9 @@ impl fmt::Display for CompanyNotFoundError {
 
 
 impl CompanyPanel {
-    pub fn new(panel: TermPanel) -> Self {
+    pub fn new(panel: TermPanelUpdate) -> Self {
         let mut me = Self {
-            panel,
+            panel: panel.into(),
             chooser: None,
             highlighted: false,
         };
@@ -52,13 +52,17 @@ impl CompanyPanel {
         me
     }
 
-    pub fn resize(&mut self, new_panel: TermPanel) {
-        self.panel = new_panel;
+    pub fn resize(&mut self, new_panel: TermPanelUpdate) {
+        self.panel.update(new_panel);
         self.render();
     }
 
     /// Initializes the company chooser with the selected available companies.
-    pub fn start_action(&mut self, available_companies: CompanyMap<bool>, include_null: bool) {
+    pub fn start_action(
+        &mut self,
+        available_companies: CompanyMap<bool>,
+        include_null: bool
+    ) {
         self.chooser = Some(CompanyChooser::new(available_companies.true_companies(), include_null));
         self.render();
     }
@@ -108,7 +112,9 @@ impl CompanyPanel {
     /// Processes a keystroke directed to this panel. If the keystroke results
     /// in the completion of the underlying action, a [`Some`] is returned with
     /// that completed action provided.
-    pub fn process_key(&mut self, key: Key) -> Option<CompanyPanelKeyProcessEvent> {
+    pub fn process_key(&mut self, key: Key)
+        -> Option<CompanyPanelKeyProcessEvent>
+    {
 
         // Short circuit key processing if this panel isn't rendered
         let Some(chooser) = self.chooser.as_mut() else {

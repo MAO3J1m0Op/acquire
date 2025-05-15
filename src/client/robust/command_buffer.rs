@@ -2,10 +2,10 @@ use std::fmt;
 
 use termion::event::Key;
 
-use super::terminal::{TermPanel, NiceFgColor, OverflowMode, TermWriteError};
+use super::terminal::{NiceFgColor, OverflowMode, TermPanelCache, TermPanelUpdate, TermWriteError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum BufferMode {
+pub enum BufferMode {
     /// The user is typing a chat message.
     Chat,
     /// The user is typing a game command.
@@ -61,7 +61,7 @@ pub(super) struct CommandBuffer {
     /// The characters stored in this buffer
     buffer: String,
     /// The panel of the terminal where this command buffer sits.
-    panel: Option<TermPanel>,
+    panel: TermPanelCache,
     /// Position of the cursor within the buffer
     cursor_pos: usize,
     /// Decides whether the cursor is visible
@@ -69,11 +69,10 @@ pub(super) struct CommandBuffer {
 }
 
 impl CommandBuffer {
-    /// Creates a new buffer of size 0. It must be resized later.
-    pub fn new() -> Self {
+    pub fn new(panel: TermPanelUpdate) -> Self {
         Self {
-            buffer: String::new(),
-            panel: None,
+            buffer: String::with_capacity(panel.dim().area() as usize),
+            panel: panel.into(),
             cursor_pos: 0,
             buffer_mode: None,
         }
@@ -83,13 +82,11 @@ impl CommandBuffer {
     pub fn write_error(&mut self, error: &str)
         -> Result<(), TermWriteError>
     {
-        if let Some(panel) = &mut self.panel {
-            panel.clear();
-            panel.write(OverflowMode::Wrap, |writer| {
-                writer.write_colored(error, termion::color::LightWhite, termion::color::Red)?;
-                Ok(())
-            })?;
-        };
+        self.panel.clear();
+        self.panel.write(OverflowMode::Wrap, |writer| {
+            writer.write_colored(error, termion::color::LightWhite, termion::color::Red)?;
+            Ok(())
+        })?;
 
         // Disable the cursor without re-printing what's in the buffer
         self.buffer_mode = None;
@@ -178,7 +175,7 @@ impl CommandBuffer {
     pub fn insert_char(&mut self, ch: char)
         -> Result<(), TermWriteError>
     {
-        TermPanel::test_char(ch)?;
+        TermPanelCache::test_char(ch)?;
 
         // Don't allow insert if the buffer is full.
         if self.buffer.len() == self.buffer.capacity() { return Ok(()) }
@@ -257,8 +254,7 @@ impl CommandBuffer {
 
         // Reset the object. Now that the buffer is empty, we can properly
         // correct for any resizes that happened while the buffer was full.
-        let buffer_size = self.panel.as_ref().map(|panel| panel.dim().area() as usize)
-            .unwrap_or(0);
+        let buffer_size = self.panel.dim().area() as usize;
         self.buffer = String::with_capacity(buffer_size);
         self.cursor_pos = 0;
 
@@ -270,47 +266,43 @@ impl CommandBuffer {
         Some((command, buffer_mode))
     }
 
-    pub fn render(&mut self) {
+    fn render(&mut self) {
+        self.panel.clear();
+        self.panel.write(OverflowMode::Wrap, |writer| {
 
-        if let Some(panel) = &mut self.panel {
+            // Write the buffer symbol
+            if let Some(mode) = self.buffer_mode {
+                writer.write_fg_colored(mode.symbol(), mode).unwrap();
+            }
 
-            panel.clear();
-            panel.write(OverflowMode::Wrap, |writer| {
+            let iter = self.buffer.chars()
+            // This will render the cursor at the end of the line
+            .chain(std::iter::once(' '))
+            .enumerate();
 
-                // Write the buffer symbol
-                if let Some(mode) = self.buffer_mode {
-                    writer.write_fg_colored(mode.symbol(), mode).unwrap();
-                }
+            for (idx, chr) in iter {
 
-                let iter = self.buffer.chars()
-                // This will render the cursor at the end of the line
-                .chain(std::iter::once(' '))
-                .enumerate();
-
-                for (idx, chr) in iter {
-
-                    if idx == self.cursor_pos {
-                        if let Some(mode) = self.buffer_mode {
-                            writer.write_bg_colored(chr, mode)
-                        } else {
-                            writer.write_char(chr).map(|_| {})
-                        }
+                if idx == self.cursor_pos {
+                    if let Some(mode) = self.buffer_mode {
+                        writer.write_bg_colored(chr, mode)
                     } else {
                         writer.write_char(chr).map(|_| {})
-                    }.unwrap();
-                }
-            });
-        }
+                    }
+                } else {
+                    writer.write_char(chr).map(|_| {})
+                }.unwrap();
+            }
+        });
     }
 
-    pub fn resize(&mut self, new_panel: TermPanel) {
+    pub fn resize(&mut self, new_panel: TermPanelCache) {
 
         // Re-allocate the buffer to have the capacity of the new buffer.
         let mut string = String::with_capacity(new_panel.dim().area() as usize);
         string.clone_from(&self.buffer);
         self.buffer = string;
 
-        self.panel = Some(new_panel);
+        self.panel = new_panel;
 
         self.render();
     }
@@ -320,17 +312,17 @@ impl CommandBuffer {
 mod test {
     use crate::client::robust::command_buffer::{CommandBuffer, BufferMode};
     use crate::client::robust::panels::PanelDim;
-    use crate::client::robust::terminal::TermPanel;
+    use crate::client::robust::terminal::{setup_terminal, TermPanelUpdate};
 
     #[tokio::test]
     async fn test_buffer() -> std::io::Result<()> {
-        let (mut terminal, mut keys) = TermPanel::new()?;
+        let (terminal, mut keys) = setup_terminal()?;
+        let mut terminal: TermPanelUpdate = (&terminal).into();
         terminal.reduce_size(PanelDim {
             top_left: (10, 3),
             size: (10, 5),
         });
-        let mut buffer = CommandBuffer::new();
-        buffer.resize(terminal);
+        let mut buffer = CommandBuffer::new(terminal);
         buffer.set_buffer_mode(BufferMode::Command);
         loop {
             let key = match keys.recv().await {

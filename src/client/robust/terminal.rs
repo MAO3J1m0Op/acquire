@@ -1,4 +1,4 @@
-use std::{io::{self, Stdout, Write}, fmt, rc::Rc, cell::RefCell};
+use std::{cell::RefCell, fmt, io::{self, Stdout, Write}, rc::Rc};
 
 use termion::{raw::RawTerminal, event::Key, color::{Color, self}, cursor::HideCursor};
 use tokio::sync::mpsc;
@@ -32,63 +32,80 @@ impl Write for TermControls {
     }
 }
 
-pub struct TermPanel {
+pub struct PaneledTerminal {
+    /// We can use a [`RefCell`], as it is only lent through call to [`panel`],
+    /// which takes `&mut self`.
     controls: Rc<RefCell<TermControls>>,
     dim: PanelDim,
 }
 
-impl std::fmt::Debug for TermPanel {
+pub fn setup_terminal() -> io::Result<(PaneledTerminal, mpsc::Receiver<Key>)> {
+    use termion::raw::IntoRawMode;
+    use termion::input::TermRead;
+
+    // Clear the screen
+    let mut stdout = io::stdout();
+    write!(stdout, "{}", termion::clear::All)?;
+
+    let stdout = HideCursor::from(IntoRawMode::into_raw_mode(stdout)?);
+    let (key_sender, key_receiver) = mpsc::channel(1);
+
+    std::thread::spawn(move || {
+
+        let stdin = io::stdin();
+        let mut stdin = stdin.lock().keys();
+
+        loop {
+            let key = stdin.next().unwrap().unwrap();
+            let result = key_sender.blocking_send(key);
+
+            // SendError means the receiver is closed, ergo this task should end.
+            if let Err(_why) = result {
+                break;
+            }
+        }
+    });
+
+    let terminal = PaneledTerminal {
+        controls: Rc::new(RefCell::new(TermControls {
+            terminal: stdout,
+        })),
+        dim: PanelDim {
+            top_left: (1, 1),
+            size: termion::terminal_size()?,
+        }
+    };
+
+    Ok((terminal, key_receiver))
+}
+
+impl<'c> From<&'c PaneledTerminal> for TermPanelUpdate<'c> {
+    fn from(value: &'c PaneledTerminal) -> Self {
+        Self {
+            controls: &value.controls,
+            dim: value.dim,
+        }
+    }
+}
+
+/// A terminal in raw mode that is capable of being split into panels. This may
+/// be one panel a multi-panel terminal. The cache portion is not resizable; it
+/// is intended to be used by a singular panel for rendering purposes.
+pub struct TermPanelCache {
+    controls: Rc<RefCell<TermControls>>,
+    dim: PanelDim,
+}
+
+impl std::fmt::Debug for TermPanelCache {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TermPanel")
+        f.debug_struct("TermPanelCache")
             .field("controls", &"...")
             .field("dim", &self.dim)
             .finish()
     }
 }
 
-impl TermPanel {
-    /// Puts the `stdio` into raw mode, and returns a new `Terminal` instance as
-    /// well as a receiver of [`Key`] events.
-    pub fn new() -> io::Result<(TermPanel, mpsc::Receiver<Key>)> {
-        use termion::raw::IntoRawMode;
-        use termion::input::TermRead;
-
-        // Clear the screen
-        let mut stdout = io::stdout();
-        write!(stdout, "{}", termion::clear::All)?;
-
-        let stdout = HideCursor::from(IntoRawMode::into_raw_mode(stdout)?);
-        let (key_sender, key_receiver) = mpsc::channel(1);
-
-        std::thread::spawn(move || {
-
-            let stdin = io::stdin();
-            let mut stdin = stdin.lock().keys();
-
-            loop {
-                let key = stdin.next().unwrap().unwrap();
-                let result = key_sender.blocking_send(key);
-
-                // SendError means the receiver is closed, ergo this task should end.
-                if let Err(_why) = result {
-                    break;
-                }
-            }
-        });
-
-        let terminal = TermPanel {
-            controls: Rc::new(RefCell::new(TermControls {
-                terminal: stdout,
-            })),
-            dim: PanelDim {
-                top_left: (1, 1),
-                size: termion::terminal_size()?,
-            }
-        };
-
-        Ok((terminal, key_receiver))
-    }
-
+impl TermPanelCache {
     /// Tests if a character is writable to the terminal without printing anything.
     pub fn test_char(chr: char) -> Result<(), TermWriteError> {
         match chr {
@@ -101,6 +118,41 @@ impl TermPanel {
     pub fn dim(&self) -> PanelDim {
         self.dim
     }
+
+    /// Consumes a [`TermPanelUpdate`] and checks if this cache is up-to-date.
+    /// If outdated, the cache data is updated and `true` is returned.
+    pub fn update(&mut self, update: TermPanelUpdate) -> bool {
+        let mut updated = false;
+        let ptrs_eq = std::ptr::eq(&*self.controls as *const _, &**update.controls as *const _);
+        if !ptrs_eq {
+            self.controls = Rc::clone(update.controls);
+            updated = true;
+        }
+        let dims_eq = self.dim == update.dim;
+        if !dims_eq {
+            self.dim = update.dim;
+            updated = true;
+        }
+        updated
+    }
+
+    /// Checks if this panel was updated by the provided `update`. If so,
+    /// performs a write. Returns [`Some`] with the result if the write call takes place.
+    pub fn write_if_updated<F, R>(
+        &mut self,
+        update: TermPanelUpdate,
+        overflow_mode: OverflowMode,
+        closure: F
+    ) -> Option<R>
+        where F: FnOnce(&mut TermWriter) -> R
+    {
+        if self.update(update) {
+            Some(self.write(overflow_mode, closure))
+        } else {
+            None
+        }
+    }
+
 
     pub fn write<F, R>(&mut self, overflow_mode: OverflowMode, closure: F) -> R
         where F: FnOnce(&mut TermWriter) -> R
@@ -126,13 +178,47 @@ impl TermPanel {
         self.fill(' ').unwrap();
     }
 
+}
+
+impl From<TermPanelUpdate<'_>> for TermPanelCache {
+    fn from(value: TermPanelUpdate) -> Self {
+        Self {
+            controls: Rc::clone(value.controls),
+            dim: value.dim,
+        }
+    }
+}
+
+/// This is a temporary object constructed upon creation or resizing of the
+/// terminal. It is meant to be split and cascaded down to all panels to update
+/// their internal [`TermPanelCache`].
+pub struct TermPanelUpdate<'c> {
+    controls: &'c Rc<RefCell<TermControls>>,
+    dim: PanelDim,
+}
+
+impl<'c> std::fmt::Debug for TermPanelUpdate<'c> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TermPanelUpdate")
+            .field("controls", &"...")
+            .field("dim", &self.dim)
+            .finish()
+    }
+}
+
+impl<'c> TermPanelUpdate<'c> {
+
+    pub fn dim(&self) -> PanelDim {
+        self.dim
+    }
+
     pub fn split_horiz(self, weight: f64) -> (Self, Self) {
         let (left, right) = self.dim.split_horiz(weight);
-        let left = TermPanel {
-            controls: Rc::clone(&self.controls),
+        let left = Self {
+            controls: self.controls,
             dim: left,
         };
-        let right = TermPanel {
+        let right = Self {
             controls: self.controls,
             dim: right,
         };
@@ -147,12 +233,12 @@ impl TermPanel {
     {
         let (left, center, right) = self.dim.shave_horiz(off_left, off_right)?;
         self.dim = center;
-        let left = TermPanel {
-            controls: Rc::clone(&self.controls),
+        let left = Self {
+            controls: self.controls,
             dim: left,
         };
-        let right = TermPanel {
-            controls: Rc::clone(&self.controls),
+        let right = Self {
+            controls: self.controls,
             dim: right,
         };
         Ok((left, right))
@@ -160,11 +246,11 @@ impl TermPanel {
 
     pub fn split_vert(self, weight: f64) -> (Self, Self) {
         let (top, bottom) = self.dim.split_vert(weight);
-        let left = TermPanel {
-            controls: Rc::clone(&self.controls),
+        let left = Self {
+            controls: self.controls,
             dim: top,
         };
-        let right = TermPanel {
+        let right = Self {
             controls: self.controls,
             dim: bottom,
         };
@@ -179,12 +265,12 @@ impl TermPanel {
     {
         let (top, center, bottom) = self.dim.shave_vert(off_top, off_bottom)?;
         self.dim = center;
-        let left = TermPanel {
-            controls: Rc::clone(&self.controls),
+        let left = Self {
+            controls: self.controls,
             dim: top,
         };
-        let right = TermPanel {
-            controls: Rc::clone(&self.controls),
+        let right = Self {
+            controls: self.controls,
             dim: bottom,
         };
         Ok((left, right))
@@ -212,7 +298,7 @@ impl TermPanel {
 /// control of the entire terminal for its lifetime, so care should be made to
 /// ensure that only one writer exists at any given moment.
 pub struct TermWriter<'a> {
-    panel: &'a TermPanel,
+    panel: &'a TermPanelCache,
     term: &'a mut TermControls,
     /// The position of the cursor within the panel.
     ///
@@ -261,7 +347,7 @@ impl<'a> TermWriter<'a> {
     /// Creates a panel and writes the necessary cursor movement positions to
     /// set up this writer.
     fn new(
-        panel: &'a TermPanel,
+        panel: &'a TermPanelCache,
         terminal: &'a mut TermControls,
         overflow_mode: OverflowMode
     ) -> Self {
@@ -324,7 +410,7 @@ impl<'a> TermWriter<'a> {
     /// moves the cursor to the beginning of the next line in the panel. Returns
     /// true if the character was successfully written.
     pub fn write_char(&mut self, chr: char) -> Result<bool, TermWriteError> {
-        debug_assert!(TermPanel::test_char(chr).is_ok());
+        debug_assert!(TermPanelCache::test_char(chr).is_ok());
         match chr {
             // Newline character
             '\n' => {

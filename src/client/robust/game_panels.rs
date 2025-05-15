@@ -4,30 +4,26 @@ use crate::game::{messages::*, CompanyMap};
 use crate::game::tile::{Tile, FullHand};
 use crate::server::ConnectionManager;
 
-use self::action_panel::{ActionPanel, ActionPanelRequest};
-use self::board_panel::BoardPanel;
-
-use super::terminal::TermPanel;
+use super::terminal::TermPanelCache;
 
 mod action_panel;
+pub use action_panel::ActionPanel;
 mod board_panel;
+pub use board_panel::BoardLobbyPanel;
 
 /// Keeps track of the state of the game and the players who are connected.
-pub struct GamePanels<'c> {
+pub struct GamePanels {
     action_panel: ActionPanel,
-    board_panel: BoardPanel<'c>,
+    board_panel: BoardLobbyPanel,
 }
 
 impl<'c> GamePanels<'c> {
 
     /// Creates a new [`GamePanels`] of size zero. It must be resized later.
-    pub fn new(
-        game: ClientGame,
-        connections: &'c mut ConnectionManager,
-    ) -> Self {
+    pub fn new(panel :) -> Self {
         Self {
             action_panel: ActionPanel::new(),
-            board_panel: BoardPanel::new(game, connections),
+            board_panel: BoardLobbyPanel::new(game, connections),
         }
     }
 
@@ -43,7 +39,7 @@ impl<'c> GamePanels<'c> {
     ) {
         let game = Game::start(info).into();
         self.board_panel.game.start(game, player_tiles.map(|h| h.into()));
-        self.board_panel.render();
+        self.board_panel.draw_board();
     }
 
     /// Forcibly ends this game and updates the panel correspondingly. If there
@@ -51,7 +47,7 @@ impl<'c> GamePanels<'c> {
     pub fn end_game(&mut self) {
         self.board_panel.game.end();
         self.cancel_action();
-        self.board_panel.render();
+        self.board_panel.draw_board();
     }
 
     /// Accepts a player action and re-renders the board panel.
@@ -63,7 +59,7 @@ impl<'c> GamePanels<'c> {
         action: &TaggedPlayerAction
     ){
         self.board_panel.game.update(action);
-        self.board_panel.render();
+        self.board_panel.draw_board();
     }
 
     /// Requests an action from the player.
@@ -108,7 +104,7 @@ impl<'c> GamePanels<'c> {
         where F: FnOnce(&mut ConnectionManager)
     {
         op(&mut self.board_panel.connections);
-        self.board_panel.render();
+        self.board_panel.draw_board();
     }
 
     /// Processes a key sent to this panel. This key may simply update the state
@@ -209,12 +205,12 @@ impl<'c> GamePanels<'c> {
     /// [`render_board_panel`] or [`render_action_panel`] specifically depending
     /// on which is updated.
     pub fn render(&mut self) {
-        self.board_panel.render();
+        self.board_panel.draw_board();
         self.action_panel.render(self.board_panel.game.hand());
     }
 
     /// Resizes the panel and re-renders.
-    pub fn resize(&mut self, new_panel: TermPanel) {
+    pub fn resize(&mut self, new_panel: TermPanelCache) {
 
         // Decide which way to split the panels
         let (board_display, action_display) = if new_panel.dim().size.0 < new_panel.dim().size.1 {

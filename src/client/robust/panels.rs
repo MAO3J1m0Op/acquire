@@ -2,7 +2,7 @@ use std::fmt;
 use thiserror::Error;
 
 /// Dimensions of a panel.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct PanelDim {
     /// The position of the top-left corner of the panel.
     pub top_left: (u16, u16),

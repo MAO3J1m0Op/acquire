@@ -41,6 +41,13 @@ impl Company {
             _ => panic!("No corresponding value"),
         }
     }
+
+    pub fn option_color(opt: Option<Company>) -> Box<dyn termion::color::Color> {
+        match opt {
+            Some(company) => Box::new(company),
+            None => Box::new(color::Reset),
+        }
+    }
 }
 
 impl Color for Company {
