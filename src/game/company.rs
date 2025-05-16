@@ -42,10 +42,35 @@ impl Company {
         }
     }
 
-    pub fn option_color(opt: Option<Company>) -> Box<dyn termion::color::Color> {
-        match opt {
-            Some(company) => Box::new(company),
-            None => Box::new(color::Reset),
+    pub fn option_color(opt: Option<Company>) -> impl NiceFgColor {
+        OptionColor(opt)
+    }
+}
+
+#[derive(Debug)]
+struct OptionColor(Option<Company>);
+
+impl Color for OptionColor {
+    fn write_fg(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+            Some(company) => company.write_fg(f),
+            None => color::Reset.write_fg(f),
+        }
+    }
+
+    fn write_bg(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+            Some(company) => company.write_bg(f),
+            None => color::Reset.write_bg(f),
+        }
+    }
+}
+
+impl NiceFgColor for OptionColor {
+    fn write_nice_fg(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Some(company) => company.write_nice_fg(f),
+            None => color::Reset.write_nice_fg(f),
         }
     }
 }
