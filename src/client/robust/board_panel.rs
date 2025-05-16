@@ -12,7 +12,7 @@ impl BoardLobbyPanel {
         Self { panel: panel.into() }
     }
 
-    pub fn draw_board(&mut self, game: Game<kernel::Ambiguous>) {
+    pub fn draw_board(&mut self, game: &Game<kernel::Ambiguous>) {
 
         // Render the board
         self.panel.clear();

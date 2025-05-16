@@ -119,6 +119,11 @@ impl ActionPanel {
         self.keystroke_demander = demander;
     }
 
+    /// Provides the hand cache of the action panel with a newly drawn tile.
+    pub fn provide_tile(&mut self, new_tile: Tile, board: &Board) -> Result<(), Tile> {
+        self.tile_panel.provide_tile(new_tile, board)
+    }
+
     /// Processes a single key from the user. If that key completes the action,
     /// this function returns [`Some`] with the completed action.
     pub fn process_key(&mut self, key: termion::event::Key, board: &Board) -> Result<Option<ClientMessage>, Box<str>> {

@@ -1,5 +1,6 @@
 use std::io;
 
+use crate::game::kernel::Game;
 use crate::game::{messages::*, CompanyMap};
 use crate::server::{ConnectionManager, NewConnection};
 
@@ -7,16 +8,19 @@ use self::chat_panel::ChatPanel;
 use self::command_buffer::CommandBuffer;
 use self::terminal::{TermPanelCache, OverflowMode, TermWriteError};
 
+/// The action panel is the main interface where the player decides what actions to take on their turn.
+mod action_panel;
+use action_panel::ActionPanel;
+/// The board panel prints the game board, or the lobby information when there is not a game in progress.
+mod board_panel;
+use board_panel::BoardLobbyPanel;
 /// The chat panel is responsible for printing chat and in-game messages.
 mod chat_panel;
 /// The command buffer manages the user typing and sending commands.
 mod command_buffer;
-/// This shows both the board and the menu the player uses to input moves.
-mod game_panels;
 pub mod terminal;
 mod panels;
 
-use game_panels::{ActionPanel, BoardLobbyPanel};
 use panels::PanelTooSmallError;
 use terminal::{setup_terminal, TermPanelUpdate};
 use termion::event::Key;
@@ -282,7 +286,7 @@ impl ClientPanels {
                 // but the player uses the command buffer to send the action
                 // instead, the action panel will become outdated. To fix this,
                 // we clear the action panel upon receipt of a player action.
-                self.game_panel.cancel_action();
+                self.action_panel.cancel_action();
             },
             ServerMessage::DeadTile { player_name: player, dead_tile } => {
                 let msg = format!("{player} traded in dead tile {dead_tile}.");
@@ -290,8 +294,13 @@ impl ClientPanels {
             }
             ServerMessage::GameStart { info, initial_hand } => {
 
-                self.game_panel.start_game(&info, initial_hand);
+                // Start a new game
+                let game = Game::start(&info).into();
+                self.board_panel.draw_board(&game);
+                let hand = initial_hand.map(|hand| hand.into());
+                self.game.start(game, hand);
 
+                // Send corresponding chat messages
                 let msg = "Game started!".to_owned().into_boxed_str();
                 self.chat_panel.add_message(msg);
                 if let Some(initial_hand) = initial_hand {
@@ -311,7 +320,9 @@ impl ClientPanels {
             },
             ServerMessage::GameOver { reason, results } => {
 
-                self.game_panel.end_game();
+                // End the game and draw the lobby
+                self.game.end();
+                self.board_panel.draw_lobby(&self.connections);
 
                 let msg = format!("Game Over! {reason}. Here are the results:").into_boxed_str();
                 self.chat_panel.add_message(msg);
@@ -323,7 +334,20 @@ impl ClientPanels {
             },
             ServerMessage::Shutdown => return Ok(None),
             ServerMessage::YourTurn { request } => {
-                self.game_panel.request_action(request);
+                // Processes the request
+                match request {
+                    ActionRequest::PlayTile => self.action_panel.request_place_tile(),
+                    ActionRequest::BuyStock => {
+
+                        // Figures out which companies are available
+                        todo!();
+
+                        self.action_panel.request_buy_stock(todo!());
+                    },
+                    ActionRequest::ResolveMergeStock { defunct, into } => {
+                        self.action_panel.request_resolve_merge_stock(());
+                    },
+                }
                 let request_msg = match request {
                     ActionRequest::PlayTile => "place a tile",
                     ActionRequest::BuyStock => "buy stock",
@@ -335,7 +359,11 @@ impl ClientPanels {
                 self.chat_panel.add_message(msg.into_boxed_str());
 
                 if matches!(request, ActionRequest::BuyStock) {
-                    let game = self.game_panel.game().game().unwrap();
+
+                    // If we're receiving a buy-stock request, we're assuming
+                    // the game is already started.
+                    let game = self.game.game().unwrap();
+
                     // SHORT CIRCUIT: if there's no stock to buy, skip buying stock
                     let none_exist = CompanyMap::new(&()).map(|cmp, _| game.board().company_exists(cmp))
                         .iter().all(|(_, exists)| !exists);
@@ -347,7 +375,7 @@ impl ClientPanels {
 
                     // SHORT CIRCUIT: if the player can't afford stock, then skip
                     // buying stock
-                    let player_name = &self.game_panel.game().client.player_name;
+                    let player_name = &self.game.client.player_name;
                     let player_money = game.players().get(player_name).unwrap().money;
                     let cant_afford = CompanyMap::new(&())
                         .map(|cmp, _| game.board().stock_price(cmp) > player_money)
@@ -363,7 +391,12 @@ impl ClientPanels {
                 }
             },
             ServerMessage::TileDraw { tile } => {
-                self.game_panel.draw_tile(tile);
+
+                // Assumes a game is in progress
+                let game = self.game.game().unwrap();
+
+                // Assumes the player's hand isn't already full
+                self.action_panel.provide_tile(tile, game.board());
 
                 let msg = format!("You drew tile {}.", tile).into_boxed_str();
                 self.chat_panel.add_message(msg);
