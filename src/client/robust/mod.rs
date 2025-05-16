@@ -378,7 +378,7 @@ impl ClientPanels {
 
     /// Call this function any time the size of the terminal changes. This
     /// resizes each sub-panel and re-renders everything.
-    fn resize(&mut self, new_panel: TermPanelCache) -> Result<(), PanelTooSmallError> {
+    fn resize(&mut self, new_panel: TermPanelUpdate) -> Result<(), PanelTooSmallError> {
 
         let split = PanelSplit::new(new_panel)?;
 

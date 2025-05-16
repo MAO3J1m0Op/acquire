@@ -295,14 +295,14 @@ impl CommandBuffer {
         });
     }
 
-    pub fn resize(&mut self, new_panel: TermPanelCache) {
+    pub fn resize(&mut self, new_panel: TermPanelUpdate) {
 
         // Re-allocate the buffer to have the capacity of the new buffer.
         let mut string = String::with_capacity(new_panel.dim().area() as usize);
         string.clone_from(&self.buffer);
         self.buffer = string;
 
-        self.panel = new_panel;
+        self.panel.update(new_panel);
 
         self.render();
     }
