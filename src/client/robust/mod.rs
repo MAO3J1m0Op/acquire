@@ -376,7 +376,7 @@ impl ClientPanels {
 
         let msg = format!("Game Over! {reason}. Here are the results:").into_boxed_str();
         self.chat_panel.add_message(msg);
-        results.into_iter().for_each(|result| {
+        IntoIterator::into_iter(results).for_each(|result| {
             let msg = format!("  [{}] {} with ${}",
                 result.place, result.player_name, result.final_money);
             self.chat_panel.add_message(msg.into_boxed_str())
