@@ -148,11 +148,135 @@ impl PanelDim {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub struct PanelTooSmallError;
 
 impl fmt::Display for PanelTooSmallError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "panel too small for desired operation")
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::client::robust::panels::PanelTooSmallError;
+
+    use super::PanelDim;
+
+    #[test]
+    fn even_split() {
+        let panel = PanelDim {
+            top_left: (2, 3),
+            size: (50, 50),
+        };
+
+        let (left, right) = panel.split_horiz(0.5);
+
+        assert_eq!(left, PanelDim {
+            top_left: (2, 3),
+            size: (25, 50),
+        });
+        assert_eq!(right, PanelDim {
+            top_left: (27, 3),
+            size: (25, 50),
+        });
+
+        let (top, bottom) = panel.split_vert(0.5);
+
+        assert_eq!(top, PanelDim {
+            top_left: (2, 3),
+            size: (50, 25),
+        });
+        assert_eq!(bottom, PanelDim {
+            top_left: (2, 28),
+            size: (50, 25),
+        })
+    }
+
+    #[test]
+    fn uneven_split() {
+        let panel = PanelDim {
+            top_left: (2, 3),
+            size: (30, 30),
+        };
+
+        let one_third: f64 = 1.0 / 3.0;
+
+        let (left, right) = panel.split_horiz(one_third);
+
+        assert_eq!(left, PanelDim {
+            top_left: (2, 3),
+            size: (10, 30),
+        });
+        assert_eq!(right, PanelDim {
+            top_left: (12, 3),
+            size: (20, 30),
+        });
+
+        let (top, bottom) = panel.split_vert(one_third);
+
+        assert_eq!(top, PanelDim {
+            top_left: (2, 3),
+            size: (30, 10),
+        });
+        assert_eq!(bottom, PanelDim {
+            top_left: (2, 13),
+            size: (30, 20),
+        })
+    }
+
+    #[test]
+    fn shave() {
+        let panel = PanelDim {
+            top_left: (2, 3),
+            size: (30, 30),
+        };
+
+        let (left, mid, right) = panel.shave_horiz(10, 10).unwrap();
+
+        assert_eq!(left, PanelDim {
+            top_left: (2, 3),
+            size: (10, 30),
+        });
+        assert_eq!(mid, PanelDim {
+            top_left: (12, 3),
+            size: (10, 30),
+        });
+        assert_eq!(right, PanelDim {
+            top_left: (22, 3),
+            size: (10, 30),
+        });
+
+        let (top, mid, bot) = panel.shave_vert(10, 10).unwrap();
+
+        assert_eq!(top, PanelDim {
+            top_left: (2, 3),
+            size: (30, 10),
+        });
+        assert_eq!(mid, PanelDim {
+            top_left: (2, 13),
+            size: (30, 10),
+        });
+        assert_eq!(bot, PanelDim {
+            top_left: (2, 23),
+            size: (30, 10),
+        });
+    }
+
+    #[test]
+    fn shave_fail() {
+        let panel = PanelDim {
+            top_left: (2, 3),
+            size: (10, 10),
+        };
+
+        let result = panel.shave_horiz(15, 0);
+        assert_eq!(result.unwrap_err(), PanelTooSmallError);
+        let result = panel.shave_horiz(0, 15);
+        assert_eq!(result.unwrap_err(), PanelTooSmallError);
+        let result = panel.shave_vert(15, 0);
+        assert_eq!(result.unwrap_err(), PanelTooSmallError);
+        let result = panel.shave_vert(0, 15);
+        assert_eq!(result.unwrap_err(), PanelTooSmallError);
     }
 }
