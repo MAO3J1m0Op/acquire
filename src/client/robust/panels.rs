@@ -101,7 +101,7 @@ impl PanelDim {
     }
 
     pub fn split_vert(self, weight: f64) -> (Self, Self) {
-        let (top, bottom) = Self::split(self.size.0, weight);
+        let (top, bottom) = Self::split(self.size.1, weight);
 
         (
             Self {
@@ -223,6 +223,27 @@ mod test {
             top_left: (2, 13),
             size: (30, 20),
         })
+    }
+
+    #[test]
+    fn uneven_split_rounding() {
+        let panel = PanelDim {
+            top_left: (2, 3),
+            size: (50, 40),
+        };
+
+        let one_third: f64 = 1.0 / 3.0;
+
+        let (left, right) = panel.split_horiz(one_third);
+
+        assert!(left.size.0 + right.size.0 == panel.size.0);
+        assert!(left.size.1 + right.size.1 == 2 * panel.size.1);
+
+        let (top, bottom) = panel.split_vert(one_third);
+
+        assert!(top.size.0 + bottom.size.0 == 2 * panel.size.0);
+        dbg!(top, bottom, panel);
+        assert!(top.size.1 + bottom.size.1 == panel.size.1);
     }
 
     #[test]
